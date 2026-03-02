@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sales Room — Alex</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #fafbfc;
+      --surface: #ffffff;
+      --border: #e1e4e8;
+      --border-hover: #c8ccd1;
+      --text: #24292f;
+      --text-muted: #57606a;
+      --accent: #0969da;
+      --accent-hover: #0550ae;
+      --success: #1a7f37;
+      --success-bg: #dafbe1;
+      --warning: #9a6700;
+      --warning-bg: #fff8c5;
+      --info: #0969da;
+      --info-bg: #ddf4ff;
+      --radius: 8px;
+      --radius-sm: 6px;
+      --shadow: 0 1px 3px rgba(0,0,0,.06);
+      --shadow-md: 0 4px 12px rgba(0,0,0,.08);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100vh;
+    }
+
+    .layout {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px 32px 48px;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .header .sub {
+      color: var(--text-muted);
+      font-weight: 400;
+      font-size: 14px;
+    }
+
+    /* Customer panel */
+    .customer-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+    }
+    .customer-panel h2 {
+      margin: 0 0 12px 0;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .customer-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+    .customer-meta span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .customer-meta strong { color: var(--text); font-weight: 500; }
+
+    /* Table card */
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    .table-card h2 {
+      margin: 0;
+      padding: 16px 20px;
+      font-size: 15px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      background: #f6f8fa;
+    }
+    .table-wrap {
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 800px;
+    }
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    th {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .02em;
+      background: #f6f8fa;
+    }
+    tr:hover td { background: #fafbfc; }
+    tr:last-child td { border-bottom: none; }
+
+    /* Inline editable */
+    .editable {
+      cursor: text;
+      outline: none;
+      border-radius: var(--radius-sm);
+      padding: 4px 8px;
+      margin: -4px -8px;
+      min-width: 120px;
+      transition: background .15s, box-shadow .15s;
+    }
+    .editable:hover { background: #f0f2f5; }
+    .editable:focus {
+      background: var(--surface);
+      box-shadow: 0 0 0 2px var(--accent);
+    }
+    .editable[contenteditable]:empty::before { content: attr(data-placeholder); color: #8c959f; }
+
+    /* People pills */
+    .people-cell {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      min-height: 28px;
+    }
+    .person-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      background: var(--info-bg);
+      color: var(--info);
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .person-pill .remove {
+      cursor: pointer;
+      opacity: .7;
+      padding: 0 2px;
+      border: none;
+      background: none;
+      color: inherit;
+      font-size: 14px;
+      line-height: 1;
+    }
+    .person-pill .remove:hover { opacity: 1; }
+    .add-person {
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-sm);
+      padding: 4px 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+      background: transparent;
+      transition: border-color .15s, color .15s;
+    }
+    .add-person:hover { border-color: var(--accent); color: var(--accent); }
+    .people-input {
+      display: none;
+      align-items: center;
+      gap: 6px;
+    }
+    .people-input.visible { display: inline-flex; }
+    .people-input input {
+      width: 140px;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+    }
+    .people-input input::placeholder { color: #8c959f; }
+    .people-input input:focus { outline: none; border-color: var(--accent); }
+
+    /* Files drop zone */
+    .files-cell {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      min-height: 32px;
+    }
+    .file-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      background: #f0f2f5;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      color: var(--text);
+    }
+    .file-pill .remove {
+      cursor: pointer;
+      opacity: .6;
+      border: none;
+      background: none;
+      color: inherit;
+      font-size: 14px;
+      line-height: 1;
+    }
+    .file-pill .remove:hover { opacity: 1; }
+    .drop-zone {
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-sm);
+      padding: 6px 10px;
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+      background: transparent;
+      transition: border-color .15s, background .15s;
+    }
+    .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: var(--info-bg); color: var(--accent); }
+    .drop-zone input { display: none; }
+
+    /* Date input */
+    .date-input {
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-family: inherit;
+      min-width: 120px;
+    }
+    .date-input:focus { outline: none; border-color: var(--accent); }
+
+    /* Status badges */
+    .status {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .status--pending { background: #eaeef2; color: var(--text-muted); }
+    .status--in_progress { background: var(--info-bg); color: var(--info); }
+    .status--completed { background: var(--success-bg); color: var(--success); }
+    .status-select {
+      border: none;
+      background: transparent;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 999px;
+      font-family: inherit;
+      min-width: 100px;
+    }
+    .status-select.status--pending { background: #eaeef2; color: var(--text-muted); }
+    .status-select.status--in_progress { background: var(--info-bg); color: var(--info); }
+    .status-select.status--completed { background: var(--success-bg); color: var(--success); }
+    .add-confirm {
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .add-confirm:hover { background: var(--accent-hover); }
+
+    /* Execute button */
+    .actions-bar {
+      display: flex;
+      justify-content: flex-end;
+      padding: 20px 0 0;
+    }
+    .btn-execute {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      font-size: 15px;
+      font-weight: 600;
+      font-family: inherit;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      box-shadow: var(--shadow);
+      transition: background .15s, transform .1s;
+    }
+    .btn-execute:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+    .btn-execute:active { transform: translateY(0); }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .layout { padding: 16px; }
+      .customer-meta { flex-direction: column; gap: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <header class="header">
+      <div>
+        <h1>Sales Room</h1>
+        <p class="sub">Alex suggested tasks — review and approve</p>
+      </div>
+    </header>
+
+    <section class="customer-panel">
+      <h2>Customer</h2>
+      <div class="customer-meta">
+        <span><strong>Account:</strong> <span id="customer-name">—</span></span>
+        <span><strong>Owner:</strong> James (AE)</span>
+        <span><strong>Deal stage:</strong> Proposal</span>
+      </div>
+    </section>
+
+    <section class="table-card">
+      <h2>Suggested tasks</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Task name</th>
+              <th>Files</th>
+              <th>People</th>
+              <th>Deadline</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="tasks-tbody">
+            <!-- Filled by JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="actions-bar">
+      <button type="button" class="btn-execute" id="btn-execute">
+        Execute / Activate Alex
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // Read customer from URL (e.g. ?customer=IBM)
+    const params = new URLSearchParams(window.location.search);
+    const customer = params.get('customer') || 'IBM';
+    document.getElementById('customer-name').textContent = customer;
+
+    // Mock suggested tasks from Alex
+    const MOCK_TASKS = [
+      { id: '1', name: 'Send proposal and pricing deck', files: ['proposal.pdf'], people: ['@james'], deadline: '2025-03-15', status: 'pending' },
+      { id: '2', name: 'Schedule technical review with IT', files: [], people: ['@james', '@sarah'], deadline: '2025-03-20', status: 'in_progress' },
+      { id: '3', name: 'Follow up on contract terms', files: ['terms.docx'], people: ['@james'], deadline: '2025-03-25', status: 'pending' },
+      { id: '4', name: 'Prepare QBR deck', files: [], people: ['@james'], deadline: '2025-04-01', status: 'pending' },
+    ];
+
+    const STATUS_OPTIONS = [
+      { value: 'pending', label: 'Pending', class: 'status--pending' },
+      { value: 'in_progress', label: 'In Progress', class: 'status--in_progress' },
+      { value: 'completed', label: 'Completed', class: 'status--completed' },
+    ];
+
+    let tasks = MOCK_TASKS.map(t => ({ ...t, files: [...(t.files || [])], people: [...(t.people || [])] }));
+
+    function renderTasks() {
+      const tbody = document.getElementById('tasks-tbody');
+      tbody.innerHTML = tasks.map(task => `
+        <tr data-id="${task.id}">
+          <td>
+            <span class="editable" contenteditable="true" data-placeholder="Task name" data-field="name">${escapeHtml(task.name)}</span>
+          </td>
+          <td class="files-cell" data-id="${task.id}">
+            <div class="files-list">
+              ${(task.files || []).map(f => `
+                <span class="file-pill">${escapeHtml(f)} <button type="button" class="remove" data-file="${escapeHtml(f)}" aria-label="Remove file">×</button></span>
+              `).join('')}
+            </div>
+            <label class="drop-zone">
+              <input type="file" multiple />
+              + Add / drop files
+            </label>
+          </td>
+          <td>
+            <div class="people-cell" data-id="${task.id}">
+              <div class="people-list">
+                ${(task.people || []).map(p => `
+                  <span class="person-pill">${escapeHtml(p)} <button type="button" class="remove" data-person="${escapeHtml(p)}" aria-label="Remove">×</button></span>
+                `).join('')}
+              </div>
+              <button type="button" class="add-person" data-id="${task.id}">+ Add person</button>
+              <span class="people-input" data-id="${task.id}">
+                <input type="text" placeholder="@employee_name" />
+                <button type="button" class="add-confirm">Add</button>
+              </span>
+            </div>
+          </td>
+          <td>
+            <input type="date" class="date-input" data-id="${task.id}" value="${task.deadline || ''}" data-field="deadline" />
+          </td>
+          <td>
+            <select class="status-select" data-id="${task.id}" data-field="status">
+              ${STATUS_OPTIONS.map(s => `<option value="${s.value}" ${task.status === s.value ? 'selected' : ''}>${s.label}</option>`).join('')}
+            </select>
+          </td>
+        </tr>
+      `).join('');
+
+      // Inline edit task name
+      tbody.querySelectorAll('.editable[data-field="name"]').forEach(el => {
+        const id = el.closest('tr').dataset.id;
+        el.addEventListener('blur', () => {
+          const task = tasks.find(t => t.id === id);
+          if (task) task.name = el.textContent.trim() || task.name;
+        });
+      });
+
+      // Date change
+      tbody.querySelectorAll('.date-input').forEach(el => {
+        el.addEventListener('change', () => {
+          const task = tasks.find(t => t.id === el.dataset.id);
+          if (task) task.deadline = el.value;
+        });
+      });
+
+      // Status change
+      tbody.querySelectorAll('.status-select').forEach(el => {
+        el.classList.add('status', STATUS_OPTIONS.find(s => s.value === el.value)?.class || 'status--pending');
+        el.addEventListener('change', function() {
+          const task = tasks.find(t => t.id === this.dataset.id);
+          if (task) task.status = this.value;
+          this.className = 'status-select status ' + (STATUS_OPTIONS.find(s => s.value === this.value)?.class || 'status--pending');
+        });
+      });
+
+      // Add person
+      tbody.querySelectorAll('.add-person').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.dataset.id;
+          const cell = btn.closest('.people-cell');
+          const inputWrap = cell.querySelector('.people-input');
+          const input = inputWrap.querySelector('input');
+          btn.style.display = 'none';
+          inputWrap.classList.add('visible');
+          input.value = '@';
+          input.focus();
+          const addConfirm = () => {
+            const val = input.value.trim();
+            if (val) {
+              const task = tasks.find(t => t.id === id);
+              if (task && !task.people.includes(val)) task.people.push(val);
+              inputWrap.classList.remove('visible');
+              btn.style.display = 'inline-block';
+              input.value = '';
+              renderTasks();
+            }
+          };
+          inputWrap.querySelector('.add-confirm').onclick = addConfirm;
+          input.onkeydown = e => { if (e.key === 'Enter') addConfirm(); };
+        });
+      });
+
+      // Remove person
+      tbody.querySelectorAll('.person-pill .remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.closest('.people-cell').dataset.id;
+          const person = btn.dataset.person;
+          const task = tasks.find(t => t.id === id);
+          if (task) task.people = task.people.filter(p => p !== person);
+          renderTasks();
+        });
+      });
+
+      // File input
+      tbody.querySelectorAll('.files-cell input[type="file"]').forEach(input => {
+        input.addEventListener('change', () => {
+          const id = input.closest('.files-cell').dataset.id;
+          const task = tasks.find(t => t.id === id);
+          if (!task) return;
+          for (const f of input.files) (task.files || (task.files = [])).push(f.name);
+          input.value = '';
+          renderTasks();
+        });
+      });
+
+      // Drag and drop for files
+      tbody.querySelectorAll('.files-cell').forEach(cell => {
+        const id = cell.dataset.id;
+        if (!id) return;
+        const zone = cell.querySelector('.drop-zone');
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev => {
+          zone.addEventListener(ev, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (ev === 'dragover' || ev === 'dragenter') zone.classList.add('dragover');
+            else zone.classList.remove('dragover');
+            if (ev === 'drop') {
+              const task = tasks.find(t => t.id === id);
+              if (task && e.dataTransfer.files) {
+                for (const f of e.dataTransfer.files) (task.files || (task.files = [])).push(f.name);
+                renderTasks();
+              }
+            }
+          });
+        });
+      });
+
+      // Remove file
+      tbody.querySelectorAll('.file-pill .remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.closest('tr').dataset.id;
+          const file = btn.dataset.file;
+          const task = tasks.find(t => t.id === id);
+          if (task) task.files = (task.files || []).filter(f => f !== file);
+          renderTasks();
+        });
+      });
+    }
+
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    document.getElementById('btn-execute').addEventListener('click', () => {
+      alert('Alex execution activated. In production this would create tasks and notify the team.\n\nCurrent tasks:\n' + JSON.stringify(tasks, null, 2));
+    });
+
+    renderTasks();
+  </script>
+</body>
+</html>

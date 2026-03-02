@@ -1,0 +1,3 @@
+Alex has prepared a tailored execution plan for your customer based on recent activity and deal context.
+
+Review the suggested tasks, adjust as needed, and approve when ready. You can open the Sales Room below to edit task names, due dates, assignees, and attachments.
