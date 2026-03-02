@@ -12,6 +12,7 @@ import express from 'express';
 import serverlessExpress from '@vendia/serverless-express';
 import { verifySlackSignature, postMessage, sendDMWithBlocks } from './slack.js';
 import { getDmMessageContent, buildSalesRoomDmBlocks } from './salesRoomDm.js';
+import * as peterFlow from './peterFlow.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -21,16 +22,21 @@ const PORT = process.env.PORT || 3000;
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 
-// User ID that receives the Sales Room DM on startup (e.g. AE "james")
+// User IDs that receive the Sales Room DM on startup (e.g. AE "james"); second is optional
 const WELCOME_USER_ID = process.env.SLACK_WELCOME_USER_ID || 'U01234567';
+const WELCOME_2_USER_ID = (process.env.SLACK_WELCOME_2_USER_ID || process.env.slack_welcome_2_user_id || '').trim();
 
 // Base URL for Sales Room link in Slack (e.g. http://localhost:3000 or your ngrok/deployed URL)
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const SALES_ROOM_URL = `${BASE_URL}/sales-room?customer=IBM`;
 
+// Real flow: Product Peter and optional Product Peter 2 (Alex messages both; if either replies, flow continues)
+const PETER_USER_ID = (process.env.PETER_USER_ID || process.env.peter_user_id || '').trim();
+const PETER_2_USER_ID = (process.env.PETER_2_USER_ID || process.env.peter_2_user_id || '').trim();
+
 /**
- * On startup: read dm-message.txt, build Block Kit (section + button), send DM to AE.
- * Edit dm-message.txt to change the message; see salesRoomDm.js for details.
+ * On startup (and /send-welcome): read dm-message.txt, build Block Kit (section + button), send DM to AE(s).
+ * Sends to SLACK_WELCOME_USER_ID and, if set, SLACK_WELCOME_2_USER_ID.
  */
 async function sendSalesRoomDM() {
   if (!SLACK_BOT_TOKEN) {
@@ -42,8 +48,14 @@ async function sendSalesRoomDM() {
   const messageText = getDmMessageContent();
   const blocks = buildSalesRoomDmBlocks(messageText, SALES_ROOM_URL);
   const fallbackText = 'Alex has prepared an execution plan. Review & approve in the Sales Room.';
-  await sendDMWithBlocks(SLACK_BOT_TOKEN, WELCOME_USER_ID, blocks, fallbackText);
-  console.log('[server] Sales Room DM sent to user', WELCOME_USER_ID, 'with link', SALES_ROOM_URL);
+
+  const userIds = [WELCOME_USER_ID];
+  if (WELCOME_2_USER_ID) userIds.push(WELCOME_2_USER_ID);
+
+  for (const userId of userIds) {
+    await sendDMWithBlocks(SLACK_BOT_TOKEN, userId, blocks, fallbackText);
+    console.log('[server] Sales Room DM sent to user', userId, 'with link', SALES_ROOM_URL);
+  }
 }
 
 // ----- Events endpoint: need raw body for signature verification -----
@@ -103,7 +115,9 @@ app.post(
 );
 
 /**
- * Handle Slack message events: ignore bot messages, echo user text in same channel.
+ * Handle Slack message events: ignore bot messages.
+ * Real flow: if message is from Peter in the Peter DM channel, handle as Peter reply (no echo).
+ * Fake flow / other channels: echo user text in same channel.
  */
 async function handleMessageEvent(event) {
   if (event.bot_id) {
@@ -119,12 +133,27 @@ async function handleMessageEvent(event) {
 
   const channel = event.channel;
   const text = event.text?.trim() || '';
+  const userId = event.user;
 
   if (!channel) {
     console.warn('[server] No channel in message event');
     return;
   }
 
+  // ----- Real flow: Peter or Peter 2 reply in their DM channel -----
+  if (peterFlow.isPeterMessage(channel, userId)) {
+    try {
+      const handled = await peterFlow.handlePeterReply(SLACK_BOT_TOKEN, channel, userId, text);
+      if (handled) {
+        console.log('[server] Peter reply handled for real flow');
+        return;
+      }
+    } catch (err) {
+      console.error('[server] Peter reply handling failed:', err.message);
+    }
+  }
+
+  // ----- Echo (existing behavior for all other messages) -----
   console.log('[server] Echoing message event_id=%s channel=%s text=%s', event.event_id, channel, text);
 
   if (!SLACK_BOT_TOKEN) {
@@ -148,11 +177,42 @@ app.get('/sales-room', (req, res) => {
   res.type('html').send(html);
 });
 
+// Scripted events config (pre-scripted Alex demo flow). Served so Sales Room can load it.
+const SCRIPTED_EVENTS_JS_PATH = path.join(__dirname, 'public', 'scripted-events-config.js');
+app.get('/scripted-events-config.js', (req, res) => {
+  const js = fs.readFileSync(SCRIPTED_EVENTS_JS_PATH, 'utf8');
+  res.type('application/javascript').send(js);
+});
+
+// ----- Real flow: start Alex–Peter DM (called when AE clicks "Execute / Activate Alex") -----
+// Support both GET and POST (Sales Room uses GET; some API Gateway setups only route GET)
+async function handleExecuteAlex(req, res) {
+  try {
+    if (!PETER_USER_ID && !PETER_2_USER_ID) {
+      console.log('[server] /execute-alex: PETER_USER_ID and PETER_2_USER_ID not set');
+      return res.json({ ok: true, realFlowStarted: false, reason: 'PETER_USER_ID (or PETER_2_USER_ID) not set' });
+    }
+    const result = await peterFlow.startRealFlow(SLACK_BOT_TOKEN, PETER_USER_ID, PETER_2_USER_ID);
+    console.log('[server] /execute-alex: realFlowStarted=', result.started);
+    res.json({ ok: true, realFlowStarted: result.started });
+  } catch (err) {
+    console.error('[server] /execute-alex error:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+}
+app.get('/execute-alex', handleExecuteAlex);
+app.post('/execute-alex', handleExecuteAlex);
+
+// ----- Real flow: poll for Peter events and task state (Sales Room merges into Timeline) -----
+app.get('/alex-real-events', (req, res) => {
+  res.json(peterFlow.getRealEvents());
+});
+
 // ----- Trigger Sales Room DM (for Lambda: call once to send the DM with link + button) -----
 app.get('/send-welcome', async (req, res) => {
   try {
     await sendSalesRoomDM();
-    res.send('Sales Room DM sent to SLACK_WELCOME_USER_ID with link and "Review & Approve Plan" button.');
+    res.send('Sales Room DM sent to welcome user(s) (SLACK_WELCOME_USER_ID and, if set, SLACK_WELCOME_2_USER_ID) with link and "Review & Approve Plan" button.');
   } catch (err) {
     console.error('[server] /send-welcome error:', err.message);
     res.status(500).send('Failed to send DM: ' + err.message);

@@ -330,6 +330,75 @@
       transform: translateY(-1px);
     }
     .btn-execute:active { transform: translateY(0); }
+    .btn-execute:disabled { opacity: 0.8; cursor: not-allowed; transform: none; }
+    .btn-execute.running { background: var(--text-muted); }
+
+    /* Timeline / Activity Feed */
+    .timeline-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    .timeline-card h2 {
+      margin: 0;
+      padding: 16px 20px;
+      font-size: 15px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      background: #f6f8fa;
+    }
+    .timeline-feed {
+      max-height: 320px;
+      overflow-y: auto;
+      padding: 12px 0;
+    }
+    .timeline-feed .timeline-placeholder {
+      padding: 24px 20px;
+      color: var(--text-muted);
+      font-size: 13px;
+      text-align: center;
+    }
+    .timeline-entry {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--border);
+      transition: background .15s;
+      animation: timelineIn 0.3s ease;
+    }
+    .timeline-entry:last-child { border-bottom: none; }
+    .timeline-entry:hover { background: #fafbfc; }
+    @keyframes timelineIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .timeline-time {
+      flex-shrink: 0;
+      font-size: 12px;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .timeline-desc {
+      flex: 1;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .timeline-badge {
+      flex-shrink: 0;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .timeline-badge--pending { background: #eaeef2; color: var(--text-muted); }
+    .timeline-badge--completed { background: var(--success-bg); color: var(--success); }
+    .timeline-badge--edited { background: var(--warning-bg); color: var(--warning); }
+    .timeline-badge--replied { background: #ddf4ff; color: var(--info); }
 
     /* Responsive */
     @media (max-width: 768px) {
@@ -367,12 +436,20 @@
               <th>People</th>
               <th>Deadline</th>
               <th>Status</th>
+              <th>Notes</th>
             </tr>
           </thead>
           <tbody id="tasks-tbody">
             <!-- Filled by JS -->
           </tbody>
         </table>
+      </div>
+    </section>
+
+    <section class="timeline-card">
+      <h2>Timeline — Alex activity</h2>
+      <div class="timeline-feed" id="timeline-feed" role="log" aria-live="polite">
+        <div class="timeline-placeholder" id="timeline-placeholder">No activity yet. Click "Execute / Activate Alex" to start the demo.</div>
       </div>
     </section>
 
@@ -383,18 +460,23 @@
     </div>
   </div>
 
+  <script src="/scripted-events-config.js"></script>
   <script>
     // Read customer from URL (e.g. ?customer=IBM)
     const params = new URLSearchParams(window.location.search);
     const customer = params.get('customer') || 'IBM';
     document.getElementById('customer-name').textContent = customer;
 
-    // Mock suggested tasks from Alex
+    // Mock suggested tasks from Alex (include names referenced by scripted-events-config.js)
     const MOCK_TASKS = [
       { id: '1', name: 'Send proposal and pricing deck', files: ['proposal.pdf'], people: ['@james'], deadline: '2025-03-15', status: 'pending' },
       { id: '2', name: 'Schedule technical review with IT', files: [], people: ['@james', '@sarah'], deadline: '2025-03-20', status: 'in_progress' },
       { id: '3', name: 'Follow up on contract terms', files: ['terms.docx'], people: ['@james'], deadline: '2025-03-25', status: 'pending' },
       { id: '4', name: 'Prepare QBR deck', files: [], people: ['@james'], deadline: '2025-04-01', status: 'pending' },
+      { id: '5', name: 'Security Questionnaire', files: [], people: ['@CISO'], deadline: '2025-03-18', status: 'pending' },
+      { id: '6', name: 'RFP Response', files: [], people: ['@ProductMgr'], deadline: '2025-03-22', status: 'pending' },
+      { id: '7', name: 'Pricing Approval', files: [], people: ['@Legal'], deadline: '2025-03-28', status: 'pending' },
+      { id: '8', name: 'important-feature-request', files: [], people: ['@ProductPeter'], deadline: '2025-03-30', status: 'pending', notes: '' },
     ];
 
     const STATUS_OPTIONS = [
@@ -403,7 +485,7 @@
       { value: 'completed', label: 'Completed', class: 'status--completed' },
     ];
 
-    let tasks = MOCK_TASKS.map(t => ({ ...t, files: [...(t.files || [])], people: [...(t.people || [])] }));
+    let tasks = MOCK_TASKS.map(t => ({ ...t, files: [...(t.files || [])], people: [...(t.people || [])], notes: t.notes != null ? String(t.notes) : '' }));
 
     function renderTasks() {
       const tbody = document.getElementById('tasks-tbody');
@@ -445,6 +527,9 @@
               ${STATUS_OPTIONS.map(s => `<option value="${s.value}" ${task.status === s.value ? 'selected' : ''}>${s.label}</option>`).join('')}
             </select>
           </td>
+          <td>
+            <span class="editable notes-cell" contenteditable="true" data-placeholder="—" data-field="notes" data-id="${task.id}">${escapeHtml((task.notes || '').toString())}</span>
+          </td>
         </tr>
       `).join('');
 
@@ -454,6 +539,15 @@
         el.addEventListener('blur', () => {
           const task = tasks.find(t => t.id === id);
           if (task) task.name = el.textContent.trim() || task.name;
+        });
+      });
+
+      // Inline edit notes (e.g. Peter's answer for important-feature-request)
+      tbody.querySelectorAll('.editable[data-field="notes"]').forEach(el => {
+        const id = el.closest('tr').dataset.id;
+        el.addEventListener('blur', () => {
+          const task = tasks.find(t => t.id === id);
+          if (task) task.notes = el.textContent.trim();
         });
       });
 
@@ -565,8 +659,211 @@
       return div.innerHTML;
     }
 
-    document.getElementById('btn-execute').addEventListener('click', () => {
-      alert('Alex execution activated. In production this would create tasks and notify the team.\n\nCurrent tasks:\n' + JSON.stringify(tasks, null, 2));
+    // --- Pre-scripted Alex demo: timeline + task updates (modular for future real Slack) ---
+    const timelineEl = document.getElementById('timeline-feed');
+    const btnExecute = document.getElementById('btn-execute');
+
+    function getScriptedEventsList() {
+      if (typeof getScriptedEvents === 'function') return getScriptedEvents();
+      // Fallback: full list in case scripted-events-config.js did not load (e.g. 404 on Lambda, or file://)
+      return [
+        { action: 'send_message', to: '@CISO', task: 'Security Questionnaire', delay: 2000 },
+        { action: 'send_message', to: '@ProductMgr', task: 'RFP Response', delay: 3500 },
+        { action: 'receive_mock_reply', from: '@CISO', task: 'Security Questionnaire', status: 'approved', delay: 5000 },
+        { action: 'edit_task', task: 'RFP Response', notes: 'Updated answer per internal review', delay: 6500 },
+        { action: 'send_message', to: '@Legal', task: 'Pricing Approval', delay: 8000 },
+        { action: 'receive_mock_reply', from: '@LegalHelper', task: 'Pricing Approval', status: 'approved', delay: 11000 },
+        { action: 'edit_task', task: 'Send proposal and pricing deck', notes: 'Attached final pricing', delay: 13000 },
+        { action: 'receive_mock_reply', from: '@ProductMgr', task: 'RFP Response', status: 'approved', delay: 15000 }
+      ];
+    }
+
+    function formatTime(now) {
+      const d = new Date(now);
+      return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    function timelineBadgeClass(status) {
+      if (status === 'edited') return 'timeline-badge--edited';
+      if (status === 'replied') return 'timeline-badge--replied';
+      if (status === 'completed') return 'timeline-badge--completed';
+      return 'timeline-badge--pending';
+    }
+
+    function timelineBadgeLabel(badge) {
+      if (badge === 'edited') return 'Edited';
+      if (badge === 'replied') return 'Replied';
+      if (badge === 'pending') return 'Pending';
+      return 'Completed';
+    }
+
+    // Unified timeline: fake + real events merged by timestamp
+    var timelineEntries = [];
+    var lastSeenRealEventId = 0;
+
+    /** Append one entry to the Timeline (fake or real). Merged chronologically. */
+    function addTimelineEntry(description, badgeStatus, ts) {
+      var t = ts != null ? ts : Date.now();
+      timelineEntries.push({ ts: t, desc: description, badge: badgeStatus || 'completed' });
+      renderTimeline();
+      var last = timelineEl.querySelector('.timeline-entry:last-child');
+      if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    /** Render full timeline sorted by ts (fake + real merged). */
+    function renderTimeline() {
+      var placeholder = document.getElementById('timeline-placeholder');
+      if (timelineEntries.length === 0) {
+        if (!placeholder) {
+          var ph = document.createElement('div');
+          ph.className = 'timeline-placeholder';
+          ph.id = 'timeline-placeholder';
+          ph.textContent = 'No activity yet. Click "Execute / Activate Alex" to start the demo.';
+          timelineEl.appendChild(ph);
+        }
+        return;
+      }
+      if (placeholder) placeholder.remove();
+      timelineEl.querySelectorAll('.timeline-entry').forEach(function (el) { el.remove(); });
+      timelineEntries.slice().sort(function (a, b) { return a.ts - b.ts; }).forEach(function (entry) {
+        var timeStr = formatTime(entry.ts);
+        var badge = entry.badge || 'completed';
+        var div = document.createElement('div');
+        div.className = 'timeline-entry';
+        div.setAttribute('role', 'listitem');
+        div.innerHTML =
+          '<span class="timeline-time">' + escapeHtml(timeStr) + '</span>' +
+          '<span class="timeline-desc">' + escapeHtml(entry.desc) + '</span>' +
+          '<span class="timeline-badge ' + timelineBadgeClass(badge) + '">' + escapeHtml(timelineBadgeLabel(badge)) + '</span>';
+        timelineEl.appendChild(div);
+      });
+      var last = timelineEl.querySelector('.timeline-entry:last-child');
+      if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    /** Update task table from a scripted event. Hook for future real Slack (e.g. task updated via API). */
+    function applyEventToTaskTable(ev) {
+      const taskName = ev.task;
+      const task = tasks.find(function (t) { return t.name === taskName; });
+      if (!task) return;
+      if (ev.action === 'receive_mock_reply' && ev.status === 'approved') {
+        task.status = 'completed';
+      }
+      if (ev.action === 'edit_task') {
+        task.status = 'in_progress';
+        if (ev.notes) task.editNotes = ev.notes;
+      }
+      renderTasks();
+    }
+
+    function getDescriptionForEvent(ev) {
+      if (ev.action === 'send_message') return 'Sent message to ' + (ev.to || '') + ' for ' + (ev.task || '');
+      if (ev.action === 'receive_mock_reply') return 'Received approval from ' + (ev.from || '') + ' for ' + (ev.task || '');
+      if (ev.action === 'edit_task') return 'Updated task: ' + (ev.task || '') + (ev.notes ? ' — ' + ev.notes : '');
+      return ev.action + ': ' + (ev.task || '');
+    }
+
+    function getBadgeForEvent(ev) {
+      if (ev.action === 'edit_task') return 'edited';
+      return 'completed';
+    }
+
+    /** Run the pre-scripted (fake) event list with delays. */
+    function runScriptedFlow() {
+      var events = getScriptedEventsList();
+      if (!events.length) return;
+      btnExecute.disabled = true;
+      btnExecute.classList.add('running');
+      btnExecute.textContent = 'Alex is running…';
+
+      events.forEach(function (ev) {
+        setTimeout(function () {
+          var desc = getDescriptionForEvent(ev);
+          var badge = getBadgeForEvent(ev);
+          addTimelineEntry(desc, badge);
+          applyEventToTaskTable(ev);
+        }, ev.delay);
+      });
+
+      var totalMs = Math.max.apply(null, events.map(function (e) { return e.delay; })) + 1000;
+      setTimeout(function () {
+        btnExecute.disabled = false;
+        btnExecute.classList.remove('running');
+        btnExecute.textContent = 'Execute / Activate Alex';
+      }, totalMs);
+    }
+
+    /** Poll for real-flow events (Peter replies) and merge into timeline + update task. */
+    var pollIntervalId = null;
+
+    function stopPollingRealEvents() {
+      if (pollIntervalId) {
+        clearInterval(pollIntervalId);
+        pollIntervalId = null;
+      }
+    }
+
+    function pollRealEvents() {
+      fetch('/alex-real-events')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var events = data.events || [];
+          var changed = false;
+          events.forEach(function (ev) {
+            if (ev.id > lastSeenRealEventId) {
+              timelineEntries.push({ ts: ev.ts, desc: ev.description, badge: ev.badge || 'completed' });
+              changed = true;
+              if (ev.description === 'important-feature-request marked Completed') {
+                stopPollingRealEvents();
+              }
+            }
+          });
+          if (events.length) lastSeenRealEventId = Math.max(lastSeenRealEventId, Math.max.apply(null, events.map(function (e) { return e.id || 0; })));
+          if (data.taskNotes !== undefined || data.taskStatus !== undefined) {
+            var task = tasks.find(function (t) { return t.name === 'important-feature-request'; });
+            if (task) {
+              if (data.taskNotes !== undefined) task.notes = data.taskNotes;
+              if (data.taskStatus !== undefined) task.status = data.taskStatus;
+              changed = true;
+              renderTasks();
+            }
+          }
+          if (changed) renderTimeline();
+        })
+        .catch(function () {});
+    }
+
+    function startPollingRealEvents() {
+      if (pollIntervalId) return;
+      pollIntervalId = setInterval(pollRealEvents, 2000);
+      pollRealEvents();
+    }
+
+    btnExecute.addEventListener('click', function () {
+      if (btnExecute.disabled) return;
+      // Clear timeline for a fresh run (optional: remove next 3 lines to append to existing)
+      timelineEntries = [];
+      lastSeenRealEventId = 0;
+      renderTimeline();
+      // Start real flow: Alex DMs Peter (GET and POST both supported on server)
+      fetch('/execute-alex')
+        .then(function (r) {
+          if (!r.ok) {
+            throw new Error(r.status + ' ' + r.statusText);
+          }
+          return r.json();
+        })
+        .then(function (data) {
+          if (!data.realFlowStarted && data.reason) addTimelineEntry('Real flow skipped: ' + data.reason, 'pending');
+          startPollingRealEvents();
+        })
+        .catch(function (err) {
+          var msg = err && err.message ? err.message : '';
+          addTimelineEntry('Could not start real flow: ' + (msg || 'check /execute-alex and PETER_USER_ID'), 'pending');
+          startPollingRealEvents();
+        });
+      // Start fake (pre-scripted) flow
+      runScriptedFlow();
     });
 
     renderTasks();

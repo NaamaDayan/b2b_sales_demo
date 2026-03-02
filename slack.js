@@ -147,3 +147,36 @@ export async function sendDMWithBlocks(token, userId, blocks, fallbackText) {
 
   return postMessage(token, channelId, fallbackText, { blocks });
 }
+
+/**
+ * Open a DM channel with a user. Use this when you need the channel ID for follow-up messages
+ * (e.g. real flow: send first message, then post to same channel when user replies).
+ * @param {string} token - Bot token
+ * @param {string} userId - Slack user ID (e.g. U01234567)
+ * @returns {Promise<{ channelId: string }>}
+ */
+export async function openDMChannel(token, userId) {
+  const url = `${SLACK_API_BASE}/conversations.open`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ users: userId }),
+  });
+
+  const data = await res.json();
+
+  if (!data.ok) {
+    console.error('[slack] conversations.open error:', data.error);
+    throw new Error(data.error || 'Failed to open DM');
+  }
+
+  const channelId = data.channel?.id;
+  if (!channelId) {
+    throw new Error('No channel id in conversations.open response');
+  }
+
+  return { channelId };
+}
