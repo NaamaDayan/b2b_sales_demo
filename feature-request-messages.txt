@@ -1,0 +1,32 @@
+# Bot messages – editable (multi-line format)
+# KEY: on its own line, then message lines until the next KEY: or end of file.
+# Used by: Sales Room DM, Jordan flow, Important Feature Request flow.
+
+DM_MESSAGE:
+Jessica has prepared a tailored execution plan for your customer based on recent activity and deal context.
+
+Review the suggested tasks, adjust as needed, and approve when ready. You can open the Sales Room below to edit task names, due dates, assignees, and attachments.
+
+SALES_ROOM_DM_FALLBACK:
+Jessica has prepared an execution plan. Review & approve in the Sales Room.
+
+JORDAN_FIRST_QUESTION:
+Jordan, can you provide clarification on the feature requirements for the ACME deal? This will help us update the *important-feature-request* task in the Sales Room.
+
+JORDAN_SECOND_QUESTION:
+Thanks, Jordan! Could you confirm if this requirement also needs security review? Once you confirm, I'll mark the task complete.
+
+JORDAN_ACK_FINAL:
+Thanks, Jordan! I've recorded your confirmation and marked the *important-feature-request* task complete in the Sales Room.
+
+FEATURE_REQUEST_TO_JORDAN_FALLBACK:
+Feature request for ACME: SCIM provisioning – draft response for Jordan approval.
+
+BOT_AFTER_JORDAN_FIRST_REPLY:
+according to this document it seems we are able to execute it on time
+
+BOT_AFTER_JORDAN_SECOND_REPLY:
+OK, great thank you. let me check with Dan and get his approval as you asked
+
+MESSAGE_TO_JAMES:
+I drafted a mail you can send and I made sure jason and dan approved it

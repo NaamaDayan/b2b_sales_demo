@@ -1,5 +1,5 @@
 /**
- * Alex Slack Bot - Express server and Slack Events API handler.
+ * Jessica Slack Bot - Express server and Slack Events API handler.
  * Env vars: from .env locally (dotenv), from Lambda configuration on AWS.
  */
 
@@ -12,7 +12,9 @@ import express from 'express';
 import serverlessExpress from '@vendia/serverless-express';
 import { verifySlackSignature, postMessage, sendDMWithBlocks } from './slack.js';
 import { getDmMessageContent, buildSalesRoomDmBlocks } from './salesRoomDm.js';
+import { loadMessages } from './botMessages.js';
 import * as peterFlow from './peterFlow.js';
+import * as featureRequestFlow from './featureRequestFlow.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -22,17 +24,20 @@ const PORT = process.env.PORT || 3000;
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 
-// User IDs that receive the Sales Room DM on startup (e.g. AE "james"); second is optional
-const WELCOME_USER_ID = process.env.SLACK_WELCOME_USER_ID || 'U01234567';
-const WELCOME_2_USER_ID = (process.env.SLACK_WELCOME_2_USER_ID || process.env.slack_welcome_2_user_id || '').trim();
+// User IDs that receive the Sales Room DM on startup (e.g. AE "James"); second is optional
+const JAMES_USER_ID = (process.env.JAMES_USER_ID || 'U01234567').trim();
+const JAMES_2_USER_ID = (process.env.JAMES_2_USER_ID || '').trim();
 
 // Base URL for Sales Room link in Slack (e.g. http://localhost:3000 or your ngrok/deployed URL)
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
-const SALES_ROOM_URL = `${BASE_URL}/sales-room?customer=IBM`;
+const SALES_ROOM_URL = `${BASE_URL}/sales-room?customer=ACME`;
 
-// Real flow: Product Peter and optional Product Peter 2 (Alex messages both; if either replies, flow continues)
-const PETER_USER_ID = (process.env.PETER_USER_ID || process.env.peter_user_id || '').trim();
-const PETER_2_USER_ID = (process.env.PETER_2_USER_ID || process.env.peter_2_user_id || '').trim();
+// Real flow: Jordan and optional Jordan 2 (Jessica messages both; if either replies, flow continues)
+const JORDAN_USER_ID = (process.env.JORDAN_USER_ID || '').trim();
+const JORDAN_2_USER_ID = (process.env.JORDAN_2_USER_ID || '').trim();
+
+// Important Feature Request flow: Jordan = JORDAN_USER_ID, Dan = DAN_SECURITY_USER_ID, James = JAMES_USER_ID
+const DAN_SECURITY_USER_ID = (process.env.DAN_SECURITY_USER_ID || process.env.dan_security_user_id || '').trim();
 
 /**
  * On startup (and /send-welcome): read dm-message.txt, build Block Kit (section + button), send DM to AE(s).
@@ -42,15 +47,15 @@ async function sendSalesRoomDM() {
   if (!SLACK_BOT_TOKEN) {
     throw new Error('SLACK_BOT_TOKEN is not set');
   }
-  if (!WELCOME_USER_ID || WELCOME_USER_ID === 'U01234567') {
-    throw new Error('SLACK_WELCOME_USER_ID is not set or still the placeholder. Set it to your Slack user ID (e.g. U0ABC1234).');
+  if (!JAMES_USER_ID || JAMES_USER_ID === 'U01234567') {
+    throw new Error('JAMES_USER_ID is not set or still the placeholder. Set it to your Slack user ID (e.g. U0ABC1234).');
   }
   const messageText = getDmMessageContent();
   const blocks = buildSalesRoomDmBlocks(messageText, SALES_ROOM_URL);
-  const fallbackText = 'Alex has prepared an execution plan. Review & approve in the Sales Room.';
+  const fallbackText = loadMessages().SALES_ROOM_DM_FALLBACK || 'Jessica has prepared an execution plan. Review & approve in the Sales Room.';
 
-  const userIds = [WELCOME_USER_ID];
-  if (WELCOME_2_USER_ID) userIds.push(WELCOME_2_USER_ID);
+  const userIds = [JAMES_USER_ID];
+  if (JAMES_2_USER_ID) userIds.push(JAMES_2_USER_ID);
 
   for (const userId of userIds) {
     await sendDMWithBlocks(SLACK_BOT_TOKEN, userId, blocks, fallbackText);
@@ -116,7 +121,7 @@ app.post(
 
 /**
  * Handle Slack message events: ignore bot messages.
- * Real flow: if message is from Peter in the Peter DM channel, handle as Peter reply (no echo).
+ * Real flow: if message is from Jordan in the Jordan DM channel, handle as Jordan reply (no echo).
  * Fake flow / other channels: echo user text in same channel.
  */
 async function handleMessageEvent(event) {
@@ -140,16 +145,29 @@ async function handleMessageEvent(event) {
     return;
   }
 
-  // ----- Real flow: Peter or Peter 2 reply in their DM channel -----
+  // ----- Real flow: Important Feature Request (Jordan / Dan) -----
+  if (featureRequestFlow.isFeatureRequestChannel(channel, userId)) {
+    try {
+      const handled = await featureRequestFlow.handleMessage(SLACK_BOT_TOKEN, channel, userId, text);
+      if (handled) {
+        console.log('[server] Feature request flow message handled');
+        return;
+      }
+    } catch (err) {
+      console.error('[server] Feature request flow handling failed:', err.message);
+    }
+  }
+
+  // ----- Real flow: Jordan or Jordan 2 reply in their DM channel -----
   if (peterFlow.isPeterMessage(channel, userId)) {
     try {
       const handled = await peterFlow.handlePeterReply(SLACK_BOT_TOKEN, channel, userId, text);
       if (handled) {
-        console.log('[server] Peter reply handled for real flow');
+        console.log('[server] Jordan reply handled for real flow');
         return;
       }
     } catch (err) {
-      console.error('[server] Peter reply handling failed:', err.message);
+      console.error('[server] Jordan reply handling failed:', err.message);
     }
   }
 
@@ -169,50 +187,86 @@ async function handleMessageEvent(event) {
   }
 }
 
-// ----- Sales Room: mock page with customer info and editable suggested tasks -----
-// Use readFile + send instead of sendFile so Lambda's response object (no stream .on) doesn't break
+// ----- Sales Room: React app (when built) or legacy HTML -----
 const SALES_ROOM_HTML_PATH = path.join(__dirname, 'public', 'sales-room.html');
-app.get('/sales-room', (req, res) => {
-  const html = fs.readFileSync(SALES_ROOM_HTML_PATH, 'utf8');
-  res.type('html').send(html);
-});
+const CLIENT_DIST = path.join(__dirname, 'client', 'dist');
+const REACT_INDEX_PATH = path.join(CLIENT_DIST, 'index.html');
 
-// Scripted events config (pre-scripted Alex demo flow). Served so Sales Room can load it.
+if (fs.existsSync(REACT_INDEX_PATH)) {
+  app.get('/sales-room', (req, res) => res.sendFile(REACT_INDEX_PATH));
+  app.get('/sales-room/', (req, res) => res.sendFile(REACT_INDEX_PATH));
+  app.use('/sales-room', express.static(CLIENT_DIST, { index: false }));
+} else {
+  app.get('/sales-room', (req, res) => {
+    const html = fs.readFileSync(SALES_ROOM_HTML_PATH, 'utf8');
+    res.type('html').send(html);
+  });
+}
+
+// Scripted events config (pre-scripted Jessica demo flow). Served so Sales Room can load it.
 const SCRIPTED_EVENTS_JS_PATH = path.join(__dirname, 'public', 'scripted-events-config.js');
 app.get('/scripted-events-config.js', (req, res) => {
   const js = fs.readFileSync(SCRIPTED_EVENTS_JS_PATH, 'utf8');
   res.type('application/javascript').send(js);
 });
 
-// ----- Real flow: start Alex–Peter DM (called when AE clicks "Execute / Activate Alex") -----
+// ----- Real flow: start Jessica–Jordan DM (called when AE clicks "Execute / Activate Jessica") -----
 // Support both GET and POST (Sales Room uses GET; some API Gateway setups only route GET)
-async function handleExecuteAlex(req, res) {
+async function handleExecuteJessica(req, res) {
   try {
-    if (!PETER_USER_ID && !PETER_2_USER_ID) {
-      console.log('[server] /execute-alex: PETER_USER_ID and PETER_2_USER_ID not set');
-      return res.json({ ok: true, realFlowStarted: false, reason: 'PETER_USER_ID (or PETER_2_USER_ID) not set' });
+    if (!JORDAN_USER_ID && !JORDAN_2_USER_ID) {
+      console.log('[server] /execute-jessica: JORDAN_USER_ID and JORDAN_2_USER_ID not set');
+      return res.json({ ok: true, realFlowStarted: false, reason: 'JORDAN_USER_ID (or JORDAN_2_USER_ID) not set' });
     }
-    const result = await peterFlow.startRealFlow(SLACK_BOT_TOKEN, PETER_USER_ID, PETER_2_USER_ID);
-    console.log('[server] /execute-alex: realFlowStarted=', result.started);
+    const result = await peterFlow.startRealFlow(SLACK_BOT_TOKEN, JORDAN_USER_ID, JORDAN_2_USER_ID);
+    console.log('[server] /execute-jessica: realFlowStarted=', result.started);
     res.json({ ok: true, realFlowStarted: result.started });
   } catch (err) {
-    console.error('[server] /execute-alex error:', err.message);
+    console.error('[server] /execute-jessica error:', err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
 }
-app.get('/execute-alex', handleExecuteAlex);
-app.post('/execute-alex', handleExecuteAlex);
+app.get('/execute-jessica', handleExecuteJessica);
+app.post('/execute-jessica', handleExecuteJessica);
 
-// ----- Real flow: poll for Peter events and task state (Sales Room merges into Timeline) -----
-app.get('/alex-real-events', (req, res) => {
+// ----- Real flow: poll for Jordan events and task state (Sales Room merges into Timeline) -----
+app.get('/jessica-real-events', (req, res) => {
   res.json(peterFlow.getRealEvents());
+});
+
+// ----- Important Feature Request: start real Slack flow and poll state -----
+app.post('/api/tasks/important-feature-request/start', async (req, res) => {
+  try {
+    if (!JORDAN_USER_ID) {
+      return res.status(400).json({ ok: false, started: false, error: 'JORDAN_USER_ID not set' });
+    }
+    if (!SLACK_BOT_TOKEN) {
+      return res.status(500).json({ ok: false, started: false, error: 'SLACK_BOT_TOKEN not set' });
+    }
+    const result = await featureRequestFlow.startFlow(
+      SLACK_BOT_TOKEN,
+      JORDAN_USER_ID,
+      DAN_SECURITY_USER_ID || undefined,
+      JAMES_USER_ID
+    );
+    return res.json({ ok: true, started: result.started });
+  } catch (err) {
+    const message = err.message || String(err);
+    console.error('[server] important-feature-request start error:', message);
+    console.error('[server] full error:', err.stack || err);
+    return res.status(500).json({ ok: false, started: false, error: message });
+  }
+});
+
+app.get('/api/tasks/important-feature-request/state', (req, res) => {
+  res.json(featureRequestFlow.getState());
 });
 
 // ----- Trigger Sales Room DM (for Lambda: call once to send the DM with link + button) -----
 app.get('/send-welcome', async (req, res) => {
   try {
     await sendSalesRoomDM();
-    res.send('Sales Room DM sent to welcome user(s) (SLACK_WELCOME_USER_ID and, if set, SLACK_WELCOME_2_USER_ID) with link and "Review & Approve Plan" button.');
+    res.send('Sales Room DM sent to welcome user(s) (JAMES_USER_ID and, if set, JAMES_2_USER_ID) with link and "Review & Approve Plan" button.');
   } catch (err) {
     console.error('[server] /send-welcome error:', err.message);
     res.status(500).send('Failed to send DM: ' + err.message);
@@ -221,7 +275,7 @@ app.get('/send-welcome', async (req, res) => {
 
 // ----- Health / root -----
 app.get('/', (req, res) => {
-  res.send('Alex Slack Bot is running.');
+  res.send('Jessica Slack Bot is running.');
 });
 
 // Lambda: pass (event, context) only so the library returns a Promise; Node.js 24+ requires promise-based handlers

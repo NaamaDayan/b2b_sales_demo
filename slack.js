@@ -1,5 +1,5 @@
 /**
- * Slack API helpers and request verification for Alex bot.
+ * Slack API helpers and request verification for Jessica bot.
  * Uses native fetch (Node 18+) and Slack Web API.
  */
 
@@ -52,6 +52,24 @@ export function verifySlackSignature(signingSecret, signature, timestamp, rawBod
  * @param {object} [options] - Optional payload (thread_ts, etc.)
  * @returns {Promise<object>} Slack API response
  */
+async function parseSlackResponse(res, context) {
+  const text = await res.text();
+  let data = {};
+  if (text && text.trim()) {
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      throw new Error(`${context}: Slack returned non-JSON (status ${res.status}). ${text.slice(0, 80)}`);
+    }
+  }
+  if (!data.ok) {
+    const errMsg = data.error || `Slack API error (status ${res.status})`;
+    console.error('[slack]', context, errMsg, data);
+    throw new Error(errMsg);
+  }
+  return data;
+}
+
 export async function postMessage(token, channel, text, options = {}) {
   const url = `${SLACK_API_BASE}/chat.postMessage`;
   const body = JSON.stringify({
@@ -69,13 +87,7 @@ export async function postMessage(token, channel, text, options = {}) {
     body,
   });
 
-  const data = await res.json();
-
-  if (!data.ok) {
-    console.error('[slack] chat.postMessage error:', data.error, data);
-    throw new Error(data.error || 'Slack API error');
-  }
-
+  const data = await parseSlackResponse(res, 'chat.postMessage');
   return data;
 }
 
@@ -98,18 +110,11 @@ export async function sendDM(token, userId, text) {
     body: JSON.stringify({ users: userId }),
   });
 
-  const openData = await res.json();
-
-  if (!openData.ok) {
-    console.error('[slack] conversations.open error:', openData.error);
-    throw new Error(openData.error || 'Failed to open DM');
-  }
-
+  const openData = await parseSlackResponse(res, 'conversations.open (sendDM)');
   const channelId = openData.channel?.id;
   if (!channelId) {
-    throw new Error('No channel id in conversations.open response');
+    throw new Error('Slack did not return a channel id (check bot scopes: im:write, im:read)');
   }
-
   return postMessage(token, channelId, text);
 }
 
@@ -133,18 +138,11 @@ export async function sendDMWithBlocks(token, userId, blocks, fallbackText) {
     body: JSON.stringify({ users: userId }),
   });
 
-  const openData = await res.json();
-
-  if (!openData.ok) {
-    console.error('[slack] conversations.open error:', openData.error);
-    throw new Error(openData.error || 'Failed to open DM');
-  }
-
+  const openData = await parseSlackResponse(res, 'conversations.open (sendDMWithBlocks)');
   const channelId = openData.channel?.id;
   if (!channelId) {
-    throw new Error('No channel id in conversations.open response');
+    throw new Error('Slack did not return a channel id (check bot scopes: im:write, im:read)');
   }
-
   return postMessage(token, channelId, fallbackText, { blocks });
 }
 
@@ -166,16 +164,11 @@ export async function openDMChannel(token, userId) {
     body: JSON.stringify({ users: userId }),
   });
 
-  const data = await res.json();
-
-  if (!data.ok) {
-    console.error('[slack] conversations.open error:', data.error);
-    throw new Error(data.error || 'Failed to open DM');
-  }
+  const data = await parseSlackResponse(res, 'conversations.open');
 
   const channelId = data.channel?.id;
   if (!channelId) {
-    throw new Error('No channel id in conversations.open response');
+    throw new Error('Slack did not return a channel id (check bot scopes: im:write, im:read)');
   }
 
   return { channelId };

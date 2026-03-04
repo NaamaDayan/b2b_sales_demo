@@ -1,3 +1,2 @@
-Alex has prepared a tailored execution plan for your customer based on recent activity and deal context.
-
-Review the suggested tasks, adjust as needed, and approve when ready. You can open the Sales Room below to edit task names, due dates, assignees, and attachments.
+# Deprecated: The Sales Room DM message is now in feature-request-messages.txt (key: DM_MESSAGE).
+# Edit that file to change the message the AE receives.

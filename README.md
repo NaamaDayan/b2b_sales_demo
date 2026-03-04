@@ -1,6 +1,6 @@
-# Alex Slack Bot
+# Jessica Slack Bot
 
-Node.js backend for the **Alex** Slack bot: sends a Sales Room DM to the AE on startup (with Block Kit formatting and a link/button), serves a mock **Sales Room** page for reviewing and editing suggested tasks, and echoes messages in the same channel.
+Node.js backend for the **Jessica** Slack bot: sends a Sales Room DM to the AE on startup (with Block Kit formatting and a link/button), serves a mock **Sales Room** page for reviewing and editing suggested tasks, and echoes messages in the same channel.
 
 ---
 
@@ -25,11 +25,10 @@ Variables:
 - **SLACK_BOT_TOKEN** – Bot User OAuth Token (`xoxb-...`) from your Slack app (OAuth & Permissions).
 - **SLACK_SIGNING_SECRET** – Signing Secret from your Slack app (Basic Information → App Credentials).
 - **PORT** – Server port for local runs (default `3000`). Not required for Lambda.
-- **SLACK_WELCOME_USER_ID** – Slack user ID (e.g. `U01234567`) that receives the Sales Room DM on startup and when calling `/send-welcome` (the AE, e.g. “james”). Required for the startup DM.
-- **SLACK_WELCOME_2_USER_ID** – (Optional) Second user to receive the same welcome DM. When set, both users get the message with the “Review & Approve Plan” button. In Lambda, set as `SLACK_WELCOME_2_USER_ID` or `slack_welcome_2_user_id`.
-- **BASE_URL** – (Optional) Base URL for the Sales Room link in the Slack message (e.g. `http://localhost:3000` or your ngrok URL). Defaults to `http://localhost:PORT`.
-- **PETER_USER_ID** – (Optional) Slack user ID for **Product Peter**. When set, the real flow runs when the AE clicks “Execute / Activate Alex”: Alex sends the same questions to Peter (and Peter 2 if set); if either replies, the flow continues and the Timeline/task update. In Lambda, set as `PETER_USER_ID` or `peter_user_id`.
-- **PETER_2_USER_ID** – (Optional) Slack user ID for **Product Peter 2**. When set, Alex sends messages to both Peter and Peter 2; if either one answers, the flow continues (follow-up and acknowledgment are sent to both). Set in Lambda as `PETER_2_USER_ID` or `peter_2_user_id`.
+- **JAMES_USER_ID** – Slack user ID (e.g. `U01234567`) that receives the Sales Room DM on startup and when calling `/send-welcome` (the AE, e.g. James). Required for the startup DM.
+- **JAMES_2_USER_ID** – (Optional) Second user to receive the same welcome DM. When set, both users get the message with the “Review & Approve Plan” button.- **BASE_URL** – (Optional) Base URL for the Sales Room link in the Slack message (e.g. `http://localhost:3000` or your ngrok URL). Defaults to `http://localhost:PORT`.
+- **JORDAN_USER_ID** – (Optional) Slack user ID for **Jordan** (Product). When set, the real flow runs when the AE clicks “Execute / Activate Jessica”: Jessica sends the same questions to Jordan (and Jordan 2 if set); if either replies, the flow continues. For the Sales Room task “Important Feature Request”, this is the user (Jordan) who receives the SCIM feature request for approval.- **JORDAN_2_USER_ID** – (Optional) Slack user ID for **Jordan 2**. When set, Jessica sends messages to both Jordan and Jordan 2; if either one answers, the flow continues.
+- **DAN_SECURITY_USER_ID** – (Optional) Slack user ID for **Dan (Security)** in the “Important Feature Request” flow. When Jordan approves but requests Security sign-off, Jessica sends a DM to this user. When Dan approves, the task returns to Requires Attention and the AE (`JAMES_USER_ID`) receives a notification. Set in Lambda as `DAN_SECURITY_USER_ID` or `dan_security_user_id`.
 
 ---
 
@@ -40,7 +39,7 @@ The message the AE receives is read from **`dm-message.txt`** in the project roo
 1. Edit `dm-message.txt` with your desired text (plain text; line breaks are preserved).
 2. Restart the server (or call `GET /send-welcome`) to resend the DM.
 
-The DM is sent with **Slack Block Kit**: a section block for the main text and a **“Review & Approve Plan”** button that links to the Sales Room (`BASE_URL/sales-room?customer=IBM`).
+The DM is sent with **Slack Block Kit**: a section block for the main text and a **“Review & Approve Plan”** button that links to the Sales Room (`BASE_URL/sales-room?customer=ACME`).
 
 ---
 
@@ -58,10 +57,10 @@ npm run dev
 
 The server listens on `http://localhost:3000`. On startup it:
 
-1. Reads the message from `dm-message.txt`
-2. Sends a DM to the user(s) in `SLACK_WELCOME_USER_ID` (and `SLACK_WELCOME_2_USER_ID` if set) with Block Kit formatting (section + button linking to the Sales Room).
+1. Reads the message from `feature-request-messages.txt` (DM_MESSAGE)
+2. Sends a DM to the user(s) in `JAMES_USER_ID` (and `JAMES_2_USER_ID` if set) with Block Kit formatting (section + button linking to the Sales Room).
 
-**Sales Room (mock):** Open [http://localhost:3000/sales-room?customer=IBM](http://localhost:3000/sales-room?customer=IBM) to see the customer panel and Alex’s suggested tasks table (editable task name, due date, people, files; Execute / Activate Alex button).
+**Sales Room (mock):** Open [http://localhost:3000/sales-room?customer=ACME](http://localhost:3000/sales-room?customer=ACME) to see the customer panel and Jessica’s suggested tasks table (editable task name, due date, people, files; Execute / Activate Jessica button).
 
 ---
 
@@ -95,7 +94,7 @@ Slack needs a public URL to send events. Use ngrok to expose your local server:
    - **message.im** – direct messages to the bot.
    - **message.groups** – messages in private channels (if needed).
 5. **Save Changes**. Reinstall the app to the workspace if Slack prompts you.
-6. Invite the bot to a channel (e.g. `/invite @Alex`) or DM it. Messages you send will be echoed back (existing echo behavior is unchanged).
+6. Invite the bot to a channel (e.g. `/invite @Jessica`) or DM it. Messages you send will be echoed back (existing echo behavior is unchanged).
 
 ---
 
@@ -111,7 +110,7 @@ Include everything the app needs at runtime:
 - `server.js`, `slack.js`, `salesRoomDm.js`, `peterFlow.js`, `env.js`
 - `dm-message.txt`
 - `public/sales-room.html` (the Sales Room page)
-- `public/scripted-events-config.js` (pre-scripted Alex demo events; optional, has inline fallback)
+- `public/scripted-events-config.js` (pre-scripted Jessica demo events; optional, has inline fallback)
 - `package.json`
 
 Example (PowerShell, from project root):
@@ -131,8 +130,8 @@ Then upload `lambda-deploy.zip` to your Lambda function (Lambda console → Code
 - **Environment variables** (Configuration → Environment variables):
   - `SLACK_BOT_TOKEN` – Bot token.
   - `SLACK_SIGNING_SECRET` – Signing secret.
-  - `SLACK_WELCOME_USER_ID` – Slack user ID that receives the Sales Room DM (e.g. AE “james”). Optionally `SLACK_WELCOME_2_USER_ID` for a second recipient.
-  - **`BASE_URL`** – **Required for the Sales Room link in Slack.** Set this to your API Gateway base URL (no trailing slash), e.g. `https://abc123xyz.execute-api.us-east-1.amazonaws.com`. The “Review & Approve Plan” button will then open `BASE_URL/sales-room?customer=IBM`.
+  - `JAMES_USER_ID` – Slack user ID that receives the Sales Room DM (e.g. AE James). Optionally `JAMES_2_USER_ID` for a second recipient.
+  - **`BASE_URL`** – **Required for the Sales Room link in Slack.** Set this to your API Gateway base URL (no trailing slash), e.g. `https://abc123xyz.execute-api.us-east-1.amazonaws.com`. The “Review & Approve Plan” button will then open `BASE_URL/sales-room?customer=ACME`.
 
 ### 7.3 API Gateway: route all traffic to Lambda
 
@@ -155,7 +154,7 @@ Create a REST API and a **Lambda proxy** resource:
 - Integration: Lambda Proxy.
 
 So in both cases the **Sales Room is deployed** with the same Lambda: users open  
-`https://<your-api-id>.execute-api.<region>.amazonaws.com/sales-room?customer=IBM`  
+`https://<your-api-id>.execute-api.<region>.amazonaws.com/sales-room?customer=ACME`  
 (and you set that base in `BASE_URL` as above).
 
 ### 7.4 Slack Event Subscriptions (for Lambda)
@@ -168,7 +167,7 @@ So in both cases the **Sales Room is deployed** with the same Lambda: users open
 
 1. **Sales Room in the browser**  
    Open:  
-   `https://<your-api-id>.execute-api.<region>.amazonaws.com/sales-room?customer=IBM`  
+   `https://<your-api-id>.execute-api.<region>.amazonaws.com/sales-room?customer=ACME`  
    You should see the customer panel and the editable tasks table. If you get 403/404/502, check that API Gateway is routing **GET** requests to your Lambda (e.g. proxy route in §7.3).
 
 2. **Send the Sales Room DM**  
@@ -177,7 +176,7 @@ So in both cases the **Sales Room is deployed** with the same Lambda: users open
      `https://<your-api-id>.execute-api.<region>.amazonaws.com/send-welcome`
    - Or with curl:  
      `curl "https://<your-api-id>.execute-api.<region>.amazonaws.com/send-welcome"`  
-   The AE(s) (users in `SLACK_WELCOME_USER_ID` and, if set, `SLACK_WELCOME_2_USER_ID`) should get a DM with the message from `dm-message.txt` and the **“Review & Approve Plan”** button. The button should open the Sales Room URL above (only if `BASE_URL` is set correctly).
+   The AE(s) (users in `JAMES_USER_ID` and, if set, `JAMES_2_USER_ID`) should get a DM with the message from `dm-message.txt` and the **“Review & Approve Plan”** button. The button should open the Sales Room URL above (only if `BASE_URL` is set correctly).
 
 3. **Echo in Slack**  
    Invite the bot to a channel or DM it. Send a message; the bot should echo it in the same channel/DM. If echo fails, check Slack Event Subscriptions URL and Lambda logs (CloudWatch).
@@ -187,8 +186,8 @@ So in both cases the **Sales Room is deployed** with the same Lambda: users open
 | Item | Purpose |
 |------|--------|
 | `BASE_URL` set in Lambda env | Slack button opens the correct Sales Room URL |
-| API Gateway forwards GET (e.g. proxy or GET on /execute-alex) | `/sales-room`, `/send-welcome`, `/execute-alex`, `/alex-real-events` work. **The Sales Room calls GET /execute-alex**—ensure the route allows the GET method. |
-| `PETER_USER_ID` set in Lambda env (key: `PETER_USER_ID` or `peter_user_id`) | Real flow: Peter receives DMs and replies update the Sales Room |
+| API Gateway forwards GET (e.g. proxy or GET on /execute-jessica) | `/sales-room`, `/send-welcome`, `/execute-jessica`, `/jessica-real-events` work. **The Sales Room may call GET /execute-jessica**—ensure the route allows the GET method. |
+| `JORDAN_USER_ID` set in Lambda env | Real flow: Jordan receives DMs and replies update the Sales Room |
 | `public/sales-room.html` and `public/scripted-events-config.js` in the zip | Sales Room and scripted demo timeline work |
 | Request URL = `.../slack/events` | Slack events and echo work |
 
@@ -198,24 +197,25 @@ So in both cases the **Sales Room is deployed** with the same Lambda: users open
 
 ```
 /project-root
-  server.js           # Express app, /slack/events, /sales-room, /execute-alex, /alex-real-events, startup Sales Room DM
+  server.js           # Express app, /slack/events, /sales-room, /execute-jessica, /jessica-real-events, startup Sales Room DM
   slack.js            # Slack API (postMessage, sendDMWithBlocks, openDMChannel) and signature verification
-  salesRoomDm.js      # Reads dm-message.txt and builds Block Kit blocks for the DM
-  peterFlow.js        # Real Slack flow for Peter (DMs, reply handling, events for Timeline)
-  dm-message.txt      # Editable message body for the Sales Room DM (see §3)
+  salesRoomDm.js      # Reads feature-request-messages.txt (DM_MESSAGE) and builds Block Kit blocks for the DM
+  peterFlow.js        # Real Slack flow for Jordan (DMs, reply handling, events for Timeline)
+  feature-request-messages.txt  # All bot messages: DM_MESSAGE, Jordan flow, Important Feature Request (see §3)
   public/
-    sales-room.html           # Mock Sales Room (tasks table, Timeline, Execute / Activate Alex)
-    scripted-events-config.js # Pre-scripted Alex demo events (edit to change flow; replace for real Slack)
+    sales-room.html           # Mock Sales Room (tasks table, Timeline, Execute / Activate Jessica)
+    scripted-events-config.js # Pre-scripted Jessica demo events (edit to change flow; replace for real Slack)
   env.js              # Loads .env only when not on Lambda
-  .env                # Local: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, PORT, SLACK_WELCOME_USER_ID, optional SLACK_WELCOME_2_USER_ID, BASE_URL
+  .env                # Local: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, PORT, JAMES_USER_ID, optional JAMES_2_USER_ID, BASE_URL
+  botMessages.js      # Loads feature-request-messages.txt for all bot copy
   package.json
   README.md
 ```
 
 ## Bot behavior
 
-- **Startup (local):** Reads `dm-message.txt`, builds a Slack message with Block Kit (section block + “Review & Approve Plan” button), and sends a DM to `SLACK_WELCOME_USER_ID` (and `SLACK_WELCOME_2_USER_ID` if set) with a link to the Sales Room (`/sales-room?customer=IBM`).
-- **Sales Room:** `GET /sales-room` serves a mock page with customer info (e.g. IBM), a pre-filled table of Alex-suggested tasks (Task Name, Files, People, Deadline, Status), inline editing (task name, date, @people, drag & drop files), an **Execute / Activate Alex** button, and a **Timeline / Activity Feed** below the table. No database; mock data only.
-- **Pre-scripted (fake) flow:** When the AE clicks “Execute / Activate Alex”, the app runs a list of fake events (from `public/scripted-events-config.js`): send_message, receive_mock_reply, edit_task. Each event runs after its `delay` (ms from start), appends an entry to the Timeline, and updates the task table. No real Slack messages are sent for these.
-- **Real flow (Product Peter):** If `PETER_USER_ID` is set, clicking “Execute / Activate Alex” also starts the real flow: Alex sends a first DM to Peter (Block Kit: section + button), then waits for Peter’s reply. When Peter replies in that DM, the server records the reply, adds a “Replied” entry to the Timeline, updates the task `important-feature-request` (Notes and Status), and sends a second question. After Peter’s second reply, the task is marked Completed. The Sales Room polls `GET /alex-real-events` to merge real events into the Timeline and update the task. Only Peter (PETER_USER_ID) is messaged; all other users/channels still get the echo behavior.
-- **Messages:** For each non-bot message (no subtype), the bot replies in the same channel with the same text (echo)—except messages from Peter in the real-flow DM, which are handled by the real flow and not echoed.
+- **Startup (local):** Reads `feature-request-messages.txt` (DM_MESSAGE), builds a Slack message with Block Kit (section block + “Review & Approve Plan” button), and sends a DM to `JAMES_USER_ID` (and `JAMES_2_USER_ID` if set) with a link to the Sales Room (`/sales-room?customer=ACME`).
+- **Sales Room:** `GET /sales-room` serves a mock page with customer info (e.g. ACME), a pre-filled table of Jessica-suggested tasks (Task Name, Files, People, Deadline, Status), inline editing (task name, date, @people, drag & drop files), an **Execute / Activate Jessica** button, and a **Timeline / Activity Feed** below the table. No database; mock data only.
+- **Pre-scripted (fake) flow:** When the AE clicks “Execute / Activate Jessica”, the app runs a list of fake events (from `public/scripted-events-config.js`): send_message, receive_mock_reply, edit_task. Each event runs after its `delay` (ms from start), appends an entry to the Timeline, and updates the task table. No real Slack messages are sent for these.
+- **Real flow (Jordan):** If `JORDAN_USER_ID` is set, clicking “Execute / Activate Jessica” also starts the real flow: Jessica sends a first DM to Jordan (Block Kit: section + button), then waits for Jordan’s reply. When Jordan replies in that DM, the server records the reply, adds a “Replied” entry to the Timeline, updates the task `important-feature-request` (Notes and Status), and sends a second question. After Jordan’s second reply, the task is marked Completed. The Sales Room polls `GET /jessica-real-events` to merge real events into the Timeline and update the task. Only Jordan (JORDAN_USER_ID) is messaged; all other users/channels still get the echo behavior.
+- **Messages:** For each non-bot message (no subtype), the bot replies in the same channel with the same text (echo)—except messages from Jordan in the real-flow DM, which are handled by the real flow and not echoed.
