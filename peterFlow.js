@@ -38,7 +38,7 @@ function addRealEvent(description, badge = 'completed') {
 /** First question to Jordan: Block Kit section + optional button */
 function firstQuestionBlocks() {
   const msg = loadMessages();
-  const text = msg.JORDAN_FIRST_QUESTION || "Jordan, can you provide clarification on the feature requirements for the ACME deal? This will help us update the *important-feature-request* task in the Sales Room.";
+  const text = msg.JORDAN_FIRST_QUESTION || '';
   return [
     {
       type: 'section',
@@ -60,7 +60,7 @@ function firstQuestionBlocks() {
 /** Second question to Jordan (after first reply) */
 function secondQuestionBlocks() {
   const msg = loadMessages();
-  const text = msg.JORDAN_SECOND_QUESTION || "Thanks, Jordan! Could you confirm if this requirement also needs security review? Once you confirm, I'll mark the task complete.";
+  const text = msg.JORDAN_SECOND_QUESTION || '';
   return [
     {
       type: 'section',
@@ -97,7 +97,7 @@ export async function startRealFlow(token, jordanUserId1, jordanUserId2) {
 
   const labels = ['Product Jordan', 'Product Jordan 2'];
   const msg = loadMessages();
-  const firstQuestionText = msg.JORDAN_FIRST_QUESTION || "Jordan, can you provide clarification on the feature requirements for the ACME deal?";
+  const firstQuestionText = msg.JORDAN_FIRST_QUESTION || '';
   for (let i = 0; i < ids.length; i++) {
     const { channelId } = await openDMChannel(token, ids[i]);
     state.jordans.push({ userId: ids[i], channelId, label: labels[i] });
@@ -135,7 +135,7 @@ export async function handlePeterReply(token, channelId, userId, text) {
       await postToChannel(
         token,
         j.channelId,
-        msg.JORDAN_SECOND_QUESTION || "Thanks, Jordan! Could you confirm if this requirement also needs security review?",
+        msg.JORDAN_SECOND_QUESTION || '',
         secondQuestionBlocks()
       );
     }
@@ -151,14 +151,14 @@ export async function handlePeterReply(token, channelId, userId, text) {
     state.taskStatus = 'completed';
     addRealEvent('Received approval from ' + jordan.label + ' for important-feature-request', 'replied');
 
-    const ackText = msg.JORDAN_ACK_FINAL || "Thanks, Jordan! I've recorded your confirmation and marked the *important-feature-request* task complete in the Sales Room.";
+    const ackText = msg.JORDAN_ACK_FINAL || '';
     const ackBlocks = [
       {
         type: 'section',
         text: { type: 'mrkdwn', text: ackText },
       },
     ];
-    const ackFallback = msg.JORDAN_ACK_FINAL || "Thanks, Jordan! I've recorded your confirmation and marked the important-feature-request task complete.";
+    const ackFallback = msg.JORDAN_ACK_FINAL || '';
     for (const j of state.jordans) {
       await postToChannel(token, j.channelId, ackFallback, ackBlocks);
     }

@@ -52,7 +52,7 @@ async function sendSalesRoomDM() {
   }
   const messageText = getDmMessageContent();
   const blocks = buildSalesRoomDmBlocks(messageText, SALES_ROOM_URL);
-  const fallbackText = loadMessages().SALES_ROOM_DM_FALLBACK || 'Jessica has prepared an execution plan. Review & approve in the Sales Room.';
+  const fallbackText = loadMessages().SALES_ROOM_DM_FALLBACK || '';
 
   const userIds = [JAMES_USER_ID];
   if (JAMES_2_USER_ID) userIds.push(JAMES_2_USER_ID);
@@ -146,7 +146,7 @@ async function handleMessageEvent(event) {
   }
 
   // ----- Real flow: Important Feature Request (Jordan / Dan) -----
-  if (featureRequestFlow.isFeatureRequestChannel(channel, userId)) {
+  if (await featureRequestFlow.isFeatureRequestChannel(channel, userId)) {
     try {
       const handled = await featureRequestFlow.handleMessage(SLACK_BOT_TOKEN, channel, userId, text);
       if (handled) {
@@ -171,7 +171,15 @@ async function handleMessageEvent(event) {
     }
   }
 
-  // ----- Echo (existing behavior for all other messages) -----
+  // ----- Echo only in non-DM channels (never echo in DMs) -----
+  // In DMs, if we don't have flow state (e.g. different Lambda instance or cold start), we would wrongly
+  // echo the user's message. Skip echo for DMs so Jordan's replies are never echoed when state is missing.
+  const isDM = typeof channel === 'string' && channel.startsWith('D');
+  if (isDM) {
+    console.log('[server] Skipping echo in DM channel=%s (flow state may be on another instance)', channel);
+    return;
+  }
+
   console.log('[server] Echoing message event_id=%s channel=%s text=%s', event.event_id, channel, text);
 
   if (!SLACK_BOT_TOKEN) {
@@ -237,8 +245,8 @@ app.get('/jessica-real-events', (req, res) => {
 // ----- Important Feature Request: start real Slack flow and poll state -----
 app.post('/api/tasks/important-feature-request/start', async (req, res) => {
   try {
-    if (!JORDAN_USER_ID) {
-      return res.status(400).json({ ok: false, started: false, error: 'JORDAN_USER_ID not set' });
+    if (!JORDAN_USER_ID && !JORDAN_2_USER_ID) {
+      return res.status(400).json({ ok: false, started: false, error: 'JORDAN_USER_ID or JORDAN_2_USER_ID must be set' });
     }
     if (!SLACK_BOT_TOKEN) {
       return res.status(500).json({ ok: false, started: false, error: 'SLACK_BOT_TOKEN not set' });
@@ -246,15 +254,17 @@ app.post('/api/tasks/important-feature-request/start', async (req, res) => {
     const result = await featureRequestFlow.startFlow(
       SLACK_BOT_TOKEN,
       JORDAN_USER_ID,
+      JORDAN_2_USER_ID,
       DAN_SECURITY_USER_ID || undefined,
-      JAMES_USER_ID
+      JAMES_USER_ID,
+      JAMES_2_USER_ID
     );
     return res.json({ ok: true, started: result.started });
   } catch (err) {
-    const message = err.message || String(err);
+    const message = (err && err.message) || String(err);
     console.error('[server] important-feature-request start error:', message);
-    console.error('[server] full error:', err.stack || err);
-    return res.status(500).json({ ok: false, started: false, error: message });
+    if (err && err.stack) console.error('[server] stack:', err.stack);
+    return res.status(500).json({ ok: false, started: false, error: message || 'Internal Server Error' });
   }
 });
 

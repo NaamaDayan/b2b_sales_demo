@@ -29,6 +29,12 @@ Variables:
 - **JAMES_2_USER_ID** – (Optional) Second user to receive the same welcome DM. When set, both users get the message with the “Review & Approve Plan” button.- **BASE_URL** – (Optional) Base URL for the Sales Room link in the Slack message (e.g. `http://localhost:3000` or your ngrok URL). Defaults to `http://localhost:PORT`.
 - **JORDAN_USER_ID** – (Optional) Slack user ID for **Jordan** (Product). When set, the real flow runs when the AE clicks “Execute / Activate Jessica”: Jessica sends the same questions to Jordan (and Jordan 2 if set); if either replies, the flow continues. For the Sales Room task “Important Feature Request”, this is the user (Jordan) who receives the SCIM feature request for approval.- **JORDAN_2_USER_ID** – (Optional) Slack user ID for **Jordan 2**. When set, Jessica sends messages to both Jordan and Jordan 2; if either one answers, the flow continues.
 - **DAN_SECURITY_USER_ID** – (Optional) Slack user ID for **Dan (Security)** in the “Important Feature Request” flow. When Jordan approves but requests Security sign-off, Jessica sends a DM to this user. When Dan approves, the task returns to Requires Attention and the AE (`JAMES_USER_ID`) receives a notification. Set in Lambda as `DAN_SECURITY_USER_ID` or `dan_security_user_id`.
+- **FLOW_STATE_FILE** – (Optional) Path to a file where the Important Feature Request flow state is saved (e.g. local or EFS). See "What is an instance?" below.
+- **FLOW_STATE_S3_BUCKET** – (Optional) **Simplest on Lambda:** an S3 bucket name. When set, flow state is stored in S3 so all Lambda containers share it (no VPC/EFS). **Setup:** [docs/FLOW_STATE_S3_SETUP.md](docs/FLOW_STATE_S3_SETUP.md).
+
+### What is an "instance"?
+
+An **instance** is one running copy of your server. **Locally:** one `npm run dev` process = one instance; all requests share the same memory. **Lambda:** each request can run in a different container; the container that started the flow has the state, but Jordan's reply might be handled by another container with no state. To make the bot always answer (no echo, correct reply) no matter which instance handles the reply, use a shared store: **FLOW_STATE_S3_BUCKET** (simplest on Lambda; see [docs/FLOW_STATE_S3_SETUP.md](docs/FLOW_STATE_S3_SETUP.md)) or **FLOW_STATE_FILE** with a path on EFS (see [docs/FLOW_STATE_AWS_SETUP.md](docs/FLOW_STATE_AWS_SETUP.md)). For single-container or low-traffic Lambda, in-memory state may be enough and you can leave both unset.
 
 ---
 

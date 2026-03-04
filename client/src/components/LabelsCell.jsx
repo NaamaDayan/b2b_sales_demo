@@ -2,6 +2,11 @@ import { useState } from 'react';
 
 const SUGGESTED_LABELS = ['Legal', 'Security', 'Product', 'Commercial', 'Stakeholders'];
 
+/** Slug for CSS class: "Product" → "product", "Some Label" → "some-label" */
+function labelSlug(label) {
+  return (label || '').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'default';
+}
+
 export default function LabelsCell({ taskId, labels, editable, onUpdate }) {
   const [adding, setAdding] = useState(false);
   const [inputVal, setInputVal] = useState('');
@@ -25,7 +30,7 @@ export default function LabelsCell({ taskId, labels, editable, onUpdate }) {
         {(labels && labels.length) ? (
           <span className="labels-pills">
             {labels.map((l) => (
-              <span key={l} className="label-pill">
+              <span key={l} className={`label-pill label-pill--${labelSlug(l)}`}>
                 {l}
               </span>
             ))}
@@ -40,7 +45,7 @@ export default function LabelsCell({ taskId, labels, editable, onUpdate }) {
   return (
     <div className="labels-cell" data-id={taskId}>
       {(labels || []).map((l) => (
-        <span key={l} className="label-pill">
+        <span key={l} className={`label-pill label-pill--${labelSlug(l)}`}>
           {l}{' '}
           <button type="button" className="remove" onClick={() => handleRemove(l)} aria-label="Remove">
             ×

@@ -4,6 +4,8 @@
  */
 
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 const SLACK_API_BASE = 'https://slack.com/api';
 
@@ -172,4 +174,92 @@ export async function openDMChannel(token, userId) {
   }
 
   return { channelId };
+}
+
+/**
+ * Upload a file to a Slack channel (e.g. DM) using the current API:
+ * files.getUploadURLExternal → POST file to upload_url → files.completeUploadExternal.
+ * Bot needs files:write scope. Throws on file read or API errors so callers can surface them.
+ * @param {string} token - Bot token
+ * @param {string} channelId - Channel ID (e.g. DM channel)
+ * @param {string} filePath - Absolute path to the file
+ * @param {string} [filename] - Filename for Slack (defaults to basename of filePath)
+ * @param {string} [title] - Optional title for the file in Slack
+ * @returns {Promise<object>} Slack API response from completeUploadExternal
+ */
+export async function uploadFileToChannel(token, channelId, filePath, filename, title) {
+  const name = filename || path.basename(filePath);
+  if (!token || !channelId || !filePath) {
+    throw new Error('uploadFileToChannel: missing token, channelId, or filePath');
+  }
+  let buffer;
+  try {
+    buffer = fs.readFileSync(filePath);
+  } catch (err) {
+    const msg = `Could not read file at ${filePath}: ${err.message}. Ensure the file exists (e.g. in project root or Lambda package).`;
+    console.error('[slack]', msg);
+    throw new Error(msg);
+  }
+  if (buffer.length === 0) {
+    throw new Error(`File is empty: ${filePath}`);
+  }
+
+  // Step 1: get upload URL (current API; legacy files.upload is deprecated and disabled for many apps)
+  // Slack expects application/x-www-form-urlencoded for this endpoint; JSON can return invalid_arguments
+  const formBody = new URLSearchParams({
+    length: String(buffer.length),
+    filename: name,
+  }).toString();
+  const getRes = await fetch(`${SLACK_API_BASE}/files.getUploadURLExternal`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+      Authorization: `Bearer ${token}`,
+    },
+    body: formBody,
+  });
+  const getData = await getRes.json().catch(() => ({}));
+  if (!getData.ok) {
+    const err = getData.error || getRes.statusText || String(getRes.status);
+    console.error('[slack] files.getUploadURLExternal failed:', err, getData);
+    const hint = err === 'invalid_arguments' ? ' Check length and filename are sent as form-urlencoded.' : err === 'missing_scope' ? ' Add files:write under OAuth & Permissions and reinstall the app.' : '';
+    throw new Error(`Slack file upload (get URL): ${err}.${hint}`);
+  }
+  const uploadUrl = getData.upload_url;
+  const fileId = getData.file_id;
+  if (!uploadUrl || !fileId) {
+    throw new Error('Slack did not return upload_url or file_id');
+  }
+
+  // Step 2: POST file contents to Slack's upload URL as raw binary (per Slack docs)
+  const uploadRes = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: buffer,
+  });
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text();
+    console.error('[slack] POST to upload_url failed:', uploadRes.status, errText);
+    throw new Error(`Slack file upload (POST file): ${uploadRes.status} ${errText.slice(0, 100)}`);
+  }
+
+  // Step 3: complete upload and share to channel
+  const completeRes = await fetch(`${SLACK_API_BASE}/files.completeUploadExternal`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      files: [{ id: fileId, title: title || name }],
+      channel_id: channelId,
+    }),
+  });
+  const completeData = await completeRes.json().catch(() => ({}));
+  if (!completeData.ok) {
+    const err = completeData.error || completeRes.statusText || String(completeRes.status);
+    console.error('[slack] files.completeUploadExternal failed:', err, completeData);
+    throw new Error(`Slack file upload (complete): ${err}. Check channel_id and app is in the conversation.`);
+  }
+  return completeData;
 }

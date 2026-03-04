@@ -1,2 +1,0 @@
-# Deprecated: The Sales Room DM message is now in feature-request-messages.txt (key: DM_MESSAGE).
-# Edit that file to change the message the AE receives.

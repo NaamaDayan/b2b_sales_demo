@@ -37,7 +37,7 @@ export default function App() {
       const taskInControl = { ...task };
       const callbacks = {
         onTraceEntry,
-        onMoveTask: (tid, moveTo) => {
+        onMoveTask: (tid, moveTo, taskUpdate) => {
           setExecutingTaskIds((prev) => {
             const next = new Set(prev);
             next.delete(tid);
@@ -46,8 +46,9 @@ export default function App() {
           setUnderControl((prev) => {
             const taskToMove = prev.find((t) => t.id === tid);
             if (!taskToMove) return prev;
-            if (moveTo === 'done') setDone((d) => [...d, taskToMove]);
-            if (moveTo === 'requiresAttention') setRequiresAttention((r) => [...r, taskToMove]);
+            const taskToAdd = taskUpdate ? { ...taskToMove, ...taskUpdate } : taskToMove;
+            if (moveTo === 'done') setDone((d) => [...d, taskToAdd]);
+            if (moveTo === 'requiresAttention') setRequiresAttention((r) => [...r, taskToAdd]);
             return prev.filter((t) => t.id !== tid);
           });
         },

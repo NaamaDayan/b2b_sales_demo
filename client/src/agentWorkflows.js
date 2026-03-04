@@ -31,23 +31,25 @@ function formatTime() {
  * @property {'running'|'waiting'|'completed'} [status]
  */
 
+// Delay (ms) after "send to employee" / "waiting for employee" steps to simulate response time
+const EMPLOYEE_RESPONSE_DELAY_MS = 16000;
+
 const WORKFLOWS = {
   'security-questionnaire': [
     { message: 'Draft response based on updated documents', status: 'running' },
-    { message: 'Send to @Sarah for approval', status: 'running' },
-    { message: 'Waiting for @Sarah…', delayMs: 1800, status: 'waiting' },
-    { message: 'Received approval from @Sarah', status: 'completed' },
-    { message: 'Send to @Nina for approval', status: 'running' },
-    { message: 'Waiting for @Nina…', delayMs: 1800, status: 'waiting' },
-    { message: 'Received approval from @Nina', status: 'completed' },
+    { message: 'Send to @sarah_grossman for approval', status: 'running' },
+    { message: 'Waiting for @sarah_grossman…', delayMs: EMPLOYEE_RESPONSE_DELAY_MS, status: 'waiting' },
+    { message: 'Received approval from @sarah_grossman', status: 'completed' },
+    { message: 'Send to @nina_park for approval', status: 'running' },
+    { message: 'Waiting for @nina_park…', delayMs: EMPLOYEE_RESPONSE_DELAY_MS, status: 'waiting' },
+    { message: 'Received approval from @nina_park', status: 'completed' },
     { message: 'Update security questionnaire file in workspace', status: 'running' },
     { message: 'Task completed.', moveTo: 'done', status: 'completed' },
   ],
   'discount-exception': [
     { message: 'Evaluate whether to grant discount', status: 'running' },
     { message: 'Ask @DealDesk for recommendation', status: 'running' },
-    { message: 'Wait for @DealDesk reply', status: 'waiting' },
-    { message: 'Waiting for @DealDesk…', delayMs: 2500, status: 'waiting' },
+    { message: 'Waiting for @DealDesk…', delayMs: EMPLOYEE_RESPONSE_DELAY_MS, status: 'waiting' },
     { message: 'Received reply from @DealDesk', status: 'completed' },
     { message: 'Task remains under review.', status: 'completed' },
     // moveTo omitted — task stays in Under Control
@@ -55,8 +57,7 @@ const WORKFLOWS = {
   'scim-provisioning': [
     { message: 'Check SCIM support', status: 'running' },
     { message: 'Send proposed answer to Product', status: 'running' },
-    { message: 'Wait for Product reply', status: 'waiting' },
-    { message: 'Waiting for Product…', delayMs: 2000, status: 'waiting' },
+    { message: 'Waiting for Product…', delayMs: EMPLOYEE_RESPONSE_DELAY_MS, status: 'waiting' },
     { message: 'Product responded', status: 'completed' },
     { message: 'Draft email to customer', status: 'running' },
     { message: 'Returning task to Requires Attention so AE can send the email.', moveTo: 'requiresAttention', status: 'completed' },
@@ -168,13 +169,14 @@ export async function runImportantFeatureRequestWorkflow(task, callbacks) {
       try {
         startData = JSON.parse(text);
       } catch (_) {
-        startData = { ok: false, started: false, error: 'Invalid server response' };
+        startData = { ok: false, started: false, error: text.slice(0, 200) || 'Invalid server response' };
       }
-    } else if (!startRes.ok) {
-      startData = { ok: false, started: false, error: startRes.statusText || 'Server error' };
+    }
+    if (!startRes.ok && !startData.error) {
+      startData.error = (text && text.trim()) ? text.slice(0, 200) : (startRes.statusText || 'Server error');
     }
     if (!startData.ok || !startData.started) {
-      const reason = startData.error || (startData.reason || 'check JORDAN_USER_ID and SLACK_BOT_TOKEN');
+      const reason = startData.error || startData.reason || 'check JORDAN_USER_ID / JORDAN_2_USER_ID and SLACK_BOT_TOKEN';
       onTraceEntry({
         id: nextTraceId(),
         taskId: task.id,
@@ -229,7 +231,7 @@ export async function runImportantFeatureRequestWorkflow(task, callbacks) {
 
       if (data.moveTo === 'requiresAttention') {
         stopPolling();
-        onMoveTask(task.id, 'requiresAttention');
+        onMoveTask(task.id, 'requiresAttention', data.taskUpdate);
       }
     } catch (_) {
       // ignore poll errors

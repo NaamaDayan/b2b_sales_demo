@@ -79,13 +79,13 @@ export default function TaskTable({
                   onUpdate={onUpdateTask}
                 />
               </td>
-              <td>
+              <td className="read-only-cell">
                 {task.whyItMatters}
               </td>
-              <td>
+              <td className="read-only-cell">
                 {task.whatPrepared}
               </td>
-              <td>
+              <td className="read-only-cell">
                 {task.neededFromYou}
               </td>
               <td className="validators-td">

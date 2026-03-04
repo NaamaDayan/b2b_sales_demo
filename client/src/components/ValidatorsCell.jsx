@@ -1,5 +1,18 @@
 import { useState } from 'react';
 
+/** Format @firstname_lastname to "Firstname Lastname" for display; otherwise return as-is. */
+function formatValidatorDisplay(handle) {
+  if (!handle || typeof handle !== 'string') return handle;
+  const withoutAt = handle.startsWith('@') ? handle.slice(1) : handle;
+  if (withoutAt.includes('_')) {
+    return withoutAt
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(' ');
+  }
+  return handle;
+}
+
 export default function ValidatorsCell({ taskId, validators, editable, onUpdate }) {
   const [adding, setAdding] = useState(false);
   const [inputVal, setInputVal] = useState('@');
@@ -20,7 +33,9 @@ export default function ValidatorsCell({ taskId, validators, editable, onUpdate 
   if (!editable) {
     return (
       <div className="validators-cell read-only">
-        {(validators && validators.length) ? validators.join(', ') : '—'}
+        {(validators && validators.length)
+          ? validators.map(formatValidatorDisplay).join(', ')
+          : '—'}
       </div>
     );
   }
@@ -28,8 +43,8 @@ export default function ValidatorsCell({ taskId, validators, editable, onUpdate 
   return (
     <div className="validators-cell" data-id={taskId}>
       {(validators || []).map((v) => (
-        <span key={v} className="validator-pill">
-          {v}{' '}
+        <span key={v} className="validator-pill" title={v}>
+          {formatValidatorDisplay(v)}{' '}
           <button type="button" className="remove" onClick={() => handleRemove(v)} aria-label="Remove">
             ×
           </button>
@@ -43,7 +58,7 @@ export default function ValidatorsCell({ taskId, validators, editable, onUpdate 
         <span className="validator-input-wrap visible">
           <input
             type="text"
-            placeholder="@name"
+            placeholder="@firstname_lastname"
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAdd()}

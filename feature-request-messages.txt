@@ -1,23 +1,37 @@
-# Bot messages – editable (multi-line format)
-# KEY: on its own line, then message lines until the next KEY: or end of file.
-# Used by: Sales Room DM, Jordan flow, Important Feature Request flow.
+# Bot messages – multi-line format
+#
+# Each message is defined by a KEY line followed by one or more content lines.
+# Format:
+#   KEY_NAME:
+#   First line of the message.
+#   Second line (optional).
+#   More lines as needed…
+#
+# The next KEY: (or end of file) ends the current message. Blank lines are kept.
+# Lines starting with # are comments. Used by: Sales Room DM, Jordan flow, Important Feature Request flow.
 
 DM_MESSAGE:
-Jessica has prepared a tailored execution plan for your customer based on recent activity and deal context.
-
+Jessica has identified the ACME deal from salesforce and prepared a tailored execution plan for your customer based on recent activity and deal context.
 Review the suggested tasks, adjust as needed, and approve when ready. You can open the Sales Room below to edit task names, due dates, assignees, and attachments.
 
 SALES_ROOM_DM_FALLBACK:
 Jessica has prepared an execution plan. Review & approve in the Sales Room.
 
 JORDAN_FIRST_QUESTION:
-Jordan, can you provide clarification on the feature requirements for the ACME deal? This will help us update the *important-feature-request* task in the Sales Room.
+Customer: ACME
+Urgency: HIGH 
+Item: Customer asked if we  support SCIM provisioning?
+They need a solution for automated onboarding/offboarding.
+What I've done:
+I pulled the latest internal context and drafted a Product-ready response with sources.
+It seems we can support the SCIM provisioning by the end of the week according to [1,2,3]
+
 
 JORDAN_SECOND_QUESTION:
-Thanks, Jordan! Could you confirm if this requirement also needs security review? Once you confirm, I'll mark the task complete.
+Yes, this is the most updated document. I also made sure with the R&D lead.
 
 JORDAN_ACK_FINAL:
-Thanks, Jordan! I've recorded your confirmation and marked the *important-feature-request* task complete in the Sales Room.
+Thanks, Jordan! I'll make sure Dan Tailor also approves this and let you know if there is a problem.
 
 FEATURE_REQUEST_TO_JORDAN_FALLBACK:
 Feature request for ACME: SCIM provisioning – draft response for Jordan approval.
@@ -29,4 +43,20 @@ BOT_AFTER_JORDAN_SECOND_REPLY:
 OK, great thank you. let me check with Dan and get his approval as you asked
 
 MESSAGE_TO_JAMES:
-I drafted a mail you can send and I made sure jason and dan approved it
+Customer: ACME
+Urgency: HIGH
+Item: ✅ Product-approved response is ready (Jordan Lee)
+Customer-ready answer:
+“SCIM isn’t supported today. In practice, customers solve the same onboarding/offboarding workflow with SAML + API provisioning and our certificate automation. If you tell us which IdP and target apps are in scope, we’ll outline the recommended approach and what’s feasible in the next 90 days.”
+Suggested next step: Draft email response to ACME
+
+
+# When the task returns to Requires Attention (all approvals in; AE to send email)
+TASK_WHY_IT_MATTERS_RETURNED:
+All approvals received; ready for AE to send the response to the customer.
+
+TASK_WHAT_PREPARED_RETURNED:
+Draft email (Jordan and Dan approved).
+
+TASK_NEEDED_FROM_YOU_RETURNED:
+Send the email to the customer.
