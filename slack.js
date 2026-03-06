@@ -1,5 +1,5 @@
 /**
- * Slack API helpers and request verification for Jessica bot.
+ * Slack API helpers and request verification for Demi bot.
  * Uses native fetch (Node 18+) and Slack Web API.
  */
 

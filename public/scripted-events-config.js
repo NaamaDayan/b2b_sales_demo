@@ -1,5 +1,5 @@
 /**
- * Pre-scripted Jessica demo events.
+ * Pre-scripted Demi demo events.
  * Replace or extend this list for different flows. For future real Slack integration,
  * swap this for an API that returns events (or push from server via WebSocket).
  *

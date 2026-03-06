@@ -1,6 +1,6 @@
 # Sales Room — React UI
 
-React (Vite) app for the Deal Execution Portal with three tabs (Requires Attention, Under Control, Done) and the Agent Reasoning Trace panel.
+React (Vite) app for the Deal Execution Space with three tabs (Requires Attention, Under Control, Done) and the Agent Reasoning Trace panel.
 
 ## Development
 

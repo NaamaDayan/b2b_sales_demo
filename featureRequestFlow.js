@@ -1,38 +1,35 @@
 /**
  * Real Slack flow for "Important Feature Request" task.
- * Both Jordans (JORDAN_USER_ID, JORDAN_2_USER_ID) receive the initial message; the bot only needs a reply from one to continue.
- * First reply → bot responds to both; second reply from either → bot says checking with Dan; action trail updates.
- * Dan approval is simulated; then draft mail, and both James (JAMES_USER_ID, JAMES_2_USER_ID) get the notification.
- * Messages are loaded from feature-request-messages.txt (multi-line format supported).
+ * See docs/IMPORTANT_FEATURE_REQUEST_FLOW.md for the 8-step flow.
+ * Both Jordans receive each message; one reply from either advances the flow. Both James get the final message.
+ * Messages from config/slackMessages.js.
  */
 
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { openDMChannel, postMessage, sendDM, uploadFileToChannel } from './slack.js';
-import { loadMessages } from './botMessages.js';
+import { getSlackMessage, taskUpdateOnReturn } from './config/slackMessages.js';
+import { TRACE_STEPS } from './config/featureRequestTraceSteps.js';
 import * as flowStateStore from './flowStateStore.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCIM_PDF_PATH = path.join(__dirname, 'SCIM_provisoning_feature.pdf');
 
-// After "Waiting for Dan's approval", delay before simulating Dan's response (simulates employee response time).
-// On Lambda, setTimeout often never runs after the handler returns, so use 0 there; locally use a few seconds.
 const DAN_SIMULATION_DELAY_MS = typeof process !== 'undefined' && process.env.AWS_LAMBDA_FUNCTION_NAME ? 0 : 4000;
-
 const TASK_ID = 'important-feature-request';
 
 const PHASE = {
   IDLE: 'idle',
-  SENT_TO_JORDAN: 'sent_to_jordan',
+  SENT_FIRST_TO_JORDAN: 'sent_first_to_jordan',
+  WAITING_JORDAN_FIRST_REPLY: 'waiting_jordan_first_reply',
+  SENT_SECOND_TO_JORDAN: 'sent_second_to_jordan',
   WAITING_JORDAN_SECOND_REPLY: 'waiting_jordan_second_reply',
   DONE: 'done',
 };
 
 let state = {
   phase: PHASE.IDLE,
-  /** @type {{ userId: string, channelId: string }[]} */
   jordans: [],
-  /** @type {string[]} */
   jamesUserIds: [],
   events: [],
   moveTo: null,
@@ -45,7 +42,7 @@ function nextId() {
   return state.lastEventId;
 }
 
-function addEvent(message, status = 'completed') {
+function addEvent(message, status = 'completed', opts = {}) {
   const ts = Date.now();
   state.events.push({
     id: `fr-${nextId()}`,
@@ -53,6 +50,8 @@ function addEvent(message, status = 'completed') {
     message,
     status,
     source: 'slack',
+    link: opts.link,
+    traceSource: opts.traceSource || 'Slack',
   });
   return ts;
 }
@@ -62,43 +61,19 @@ function formatTimestamp(ts) {
   return d.toTimeString().slice(0, 8);
 }
 
-/** Block Kit for message to Jordan (JORDAN_USER_ID) - SCIM request */
-function jordanMessageBlocks() {
-  return [
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: '*Customer:* ACME\n*Urgency:* HIGH',
-      },
-    },
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: '*Item:* Customer asked if we support SCIM provisioning (needed for automated onboarding/offboarding).',
-      },
-    },
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: "*What I've done:*\nSource found: Identity Integrations Roadmap - Q1 2026 (updated Feb 12, 2026). It indicates: SCIM is not planned in H1 2026. Suggested positioning: we can still solve their outcome using SAML + API provisioning + our automation workflows.\n\n*Suggested response to AE:*\n\"We don't currently support SCIM provisioning. However, customers achieve the same automated lifecycle using SAML plus API-based provisioning and our certificate automation workflows. If you share your IdP and target apps, we'll confirm the best path for your setup.\"",
-      },
-    },
-  ];
+/** Post one message to all Jordans: use blocks if present, else text. */
+async function sendToAllJordans(token, messageKey) {
+  const { fallback, text, blocks } = getSlackMessage(messageKey);
+  const fallbackText = fallback || text || '';
+  for (const j of state.jordans) {
+    if (blocks && blocks.length) {
+      await postMessage(token, j.channelId, fallbackText, { blocks });
+    } else {
+      await postMessage(token, j.channelId, text || fallbackText);
+    }
+  }
 }
 
-/**
- * Start the flow: send SCIM message to both Jordans (JORDAN_USER_ID, JORDAN_2_USER_ID).
- * Only one reply from either Jordan is needed to continue. Both James (JAMES_USER_ID, JAMES_2_USER_ID) get the final message.
- * @param {string} token - SLACK_BOT_TOKEN
- * @param {string} jordanUserId1 - JORDAN_USER_ID
- * @param {string} [jordanUserId2] - JORDAN_2_USER_ID
- * @param {string} [danUserId] - unused (Dan is simulated)
- * @param {string} jamesUserId1 - JAMES_USER_ID
- * @param {string} [jamesUserId2] - JAMES_2_USER_ID
- */
 export async function startFlow(token, jordanUserId1, jordanUserId2, danUserId, jamesUserId1, jamesUserId2) {
   const jordanIds = [jordanUserId1, jordanUserId2].filter(Boolean);
   if (!token || jordanIds.length === 0) {
@@ -121,15 +96,21 @@ export async function startFlow(token, jordanUserId1, jordanUserId2, danUserId, 
     danSimulationTimerId: null,
   };
 
-  const messages = loadMessages();
-  const fallback = messages.FEATURE_REQUEST_TO_JORDAN_FALLBACK || '';
-  const blocks = jordanMessageBlocks();
-
   try {
+    console.log('[featureRequestFlow] Opening DM channels for', jordanIds.length, 'Jordan(s)');
     for (const jordanUserId of jordanIds) {
       const { channelId } = await openDMChannel(token, jordanUserId);
       state.jordans.push({ userId: jordanUserId, channelId });
-      await postMessage(token, channelId, fallback, { blocks });
+    }
+    console.log('[featureRequestFlow] Sending JORDAN_FIRST_QUESTION');
+    await sendToAllJordans(token, 'JORDAN_FIRST_QUESTION');
+    try {
+      console.log('[featureRequestFlow] Attaching PDF to Jordan DMs');
+      for (const j of state.jordans) {
+        await uploadFileToChannel(token, j.channelId, SCIM_PDF_PATH, 'SCIM_provisoning_feature.pdf');
+      }
+    } catch (err) {
+      console.warn('[featureRequestFlow] PDF attach failed:', err.message);
     }
   } catch (err) {
     const msg = err.message || String(err);
@@ -137,28 +118,32 @@ export async function startFlow(token, jordanUserId1, jordanUserId2, danUserId, 
     throw new Error('Slack: ' + msg);
   }
 
-  addEvent('Drafted response to feature request question for approval');
-  addEvent('Sent proposed response to Jordan for approval');
-  state.phase = PHASE.SENT_TO_JORDAN;
+  addEvent(TRACE_STEPS.DRAFT_RESPONSE, 'completed', { link: 'view', traceSource: 'Drive' });
+  addEvent(TRACE_STEPS.SENT_TO_JORDAN, 'completed', { traceSource: 'Slack' });
+  state.phase = PHASE.WAITING_JORDAN_FIRST_REPLY;
 
   try {
+    console.log('[featureRequestFlow] Saving flow state');
     await flowStateStore.save(state);
   } catch (storeErr) {
     console.warn('[featureRequestFlow] Flow state save failed (flow will still run):', storeErr.message || storeErr);
   }
 
-  console.log('[featureRequestFlow] Message sent to', state.jordans.length, 'Jordan(s) (Important Feature Request)');
+  console.log('[featureRequestFlow] startFlow done: first message sent to', state.jordans.length, 'Jordan(s)');
   return { started: true };
 }
 
 async function runDanSimulationAndFinish(token) {
-  addEvent('Received Dan approval', 'completed');
-  addEvent('Drafted email to customer', 'completed');
-  addEvent('Sending to James for approval', 'completed');
+  addEvent(TRACE_STEPS.SENT_TO_DAN, 'running', { traceSource: 'Slack' });
+  if (DAN_SIMULATION_DELAY_MS > 0) {
+    await new Promise((r) => setTimeout(r, DAN_SIMULATION_DELAY_MS));
+  }
+  addEvent(TRACE_STEPS.RECEIVED_DAN_APPROVAL, 'completed');
+  addEvent(TRACE_STEPS.DRAFTED_EMAIL, 'completed', { link: 'view', traceSource: 'Slack' });
+  addEvent(TRACE_STEPS.SENDING_TO_JAMES, 'completed', { traceSource: 'Slack' });
   state.moveTo = 'requiresAttention';
-  const messages = loadMessages();
-  const text = messages.MESSAGE_TO_JAMES || '';
-  if (token && state.jamesUserIds.length > 0) {
+  const { text } = getSlackMessage('MESSAGE_TO_JAMES');
+  if (token && state.jamesUserIds.length > 0 && text) {
     for (const jamesUserId of state.jamesUserIds) {
       try {
         await sendDM(token, jamesUserId, text);
@@ -170,8 +155,9 @@ async function runDanSimulationAndFinish(token) {
   }
   state.phase = PHASE.DONE;
   const channelUserKeys = (state.jordans || []).map((j) => `${j.channelId}:${j.userId}`);
+  await flowStateStore.save(state);
   await flowStateStore.clear(channelUserKeys);
-  console.log('[featureRequestFlow] Simulated Dan approval; task returning to Requires Attention; James(es) notified');
+  console.log('[featureRequestFlow] Dan approval simulated; task returning to Requires Attention; James(es) notified');
 }
 
 function scheduleDanSimulationAndFinish(token) {
@@ -185,12 +171,6 @@ function scheduleDanSimulationAndFinish(token) {
   }, DAN_SIMULATION_DELAY_MS);
 }
 
-/**
- * Handle a message in the Important Feature Request flow (either Jordan's DM; Dan is simulated).
- * A reply from either Jordan is enough to continue. Bot responses are sent to both Jordans.
- * If this instance has no in-memory state (e.g. different Lambda), state is loaded from the shared store.
- * @returns {Promise<boolean>} true if the message was handled
- */
 export async function handleMessage(token, channelId, userId, text) {
   const trimmed = (text || '').trim();
   if (!trimmed) return false;
@@ -209,25 +189,17 @@ export async function handleMessage(token, channelId, userId, text) {
     if (!fromJordan) return false;
   }
 
-  const messages = loadMessages();
-
-  if (state.phase === PHASE.SENT_TO_JORDAN) {
-    const replyText = messages.BOT_AFTER_JORDAN_FIRST_REPLY || '';
-    for (const j of state.jordans) {
-      await postMessage(token, j.channelId, replyText);
-    }
+  if (state.phase === PHASE.WAITING_JORDAN_FIRST_REPLY) {
+    await sendToAllJordans(token, 'JORDAN_SECOND_QUESTION');
     state.phase = PHASE.WAITING_JORDAN_SECOND_REPLY;
     await flowStateStore.save(state);
     return true;
   }
 
   if (state.phase === PHASE.WAITING_JORDAN_SECOND_REPLY) {
-    const replyText = messages.BOT_AFTER_JORDAN_SECOND_REPLY || '';
-    for (const j of state.jordans) {
-      await postMessage(token, j.channelId, replyText);
-    }
-    addEvent('Received Jordan approval', 'completed');
-    addEvent("Waiting for Dan's approval", 'waiting');
+    await sendToAllJordans(token, 'JORDAN_ACK_FINAL');
+    addEvent(TRACE_STEPS.RECEIVED_JORDAN_APPROVAL, 'completed', { traceSource: 'Slack' });
+    addEvent(TRACE_STEPS.WAITING_DAN, 'waiting');
     await flowStateStore.save(state);
     await scheduleDanSimulationAndFinish(token);
     return true;
@@ -236,25 +208,22 @@ export async function handleMessage(token, channelId, userId, text) {
   return false;
 }
 
-/**
- * True if this (channelId, userId) belongs to the Important Feature Request flow (either Jordan's DM).
- * Checks in-memory state and the shared store so another instance can recognize the channel.
- */
 export async function isFeatureRequestChannel(channelId, userId) {
   if (state.jordans.some((j) => j.channelId === channelId && j.userId === userId)) return true;
   const stored = await flowStateStore.getByChannel(channelId, userId);
   return stored !== null;
 }
 
-/**
- * Return events, moveTo, and optional taskUpdate for the client.
- * When moveTo === 'requiresAttention', taskUpdate contains updated whyItMatters, whatPrepared, neededFromYou
- * so the table reflects that all approvals are in and the AE only needs to send the email.
- */
-export function getState() {
+export async function getState() {
+  let s = state;
+  const hasLocalState = s.events?.length > 0 || s.moveTo != null;
+  if (!hasLocalState) {
+    const stored = await flowStateStore.getFlowState();
+    if (stored) s = stored;
+  }
   const base = {
     taskId: TASK_ID,
-    events: state.events.map((e) => ({
+    events: (s.events || []).map((e) => ({
       id: e.id,
       taskId: TASK_ID,
       taskTitle: 'Important Feature Request',
@@ -262,16 +231,17 @@ export function getState() {
       message: e.message,
       status: e.status,
       source: e.source,
+      link: e.link,
+      traceSource: e.traceSource,
     })),
-    moveTo: state.moveTo,
-    phase: state.phase,
+    moveTo: s.moveTo,
+    phase: s.phase,
   };
-  if (state.moveTo === 'requiresAttention') {
-    const messages = loadMessages();
+  if (s.moveTo === 'requiresAttention') {
     base.taskUpdate = {
-      whyItMatters: messages.TASK_WHY_IT_MATTERS_RETURNED || '',
-      whatPrepared: messages.TASK_WHAT_PREPARED_RETURNED || '',
-      neededFromYou: messages.TASK_NEEDED_FROM_YOU_RETURNED || '',
+      whyItMatters: taskUpdateOnReturn.TASK_WHY_IT_MATTERS_RETURNED || '',
+      whatPrepared: taskUpdateOnReturn.TASK_WHAT_PREPARED_RETURNED || '',
+      neededFromYou: taskUpdateOnReturn.TASK_NEEDED_FROM_YOU_RETURNED || '',
     };
   }
   return base;

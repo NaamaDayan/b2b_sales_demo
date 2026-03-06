@@ -11,24 +11,44 @@
 # Lines starting with # are comments. Used by: Sales Room DM, Jordan flow, Important Feature Request flow.
 
 DM_MESSAGE:
-Jessica has identified the ACME deal from salesforce and prepared a tailored execution plan for your customer based on recent activity and deal context.
-Review the suggested tasks, adjust as needed, and approve when ready. You can open the Sales Room below to edit task names, due dates, assignees, and attachments.
+Hi James — I’m DEMI, your Deal Execution Manager for ACME.
+I’m here to help you handle the internal work behind this deal — chasing updates, routing questions to the right teams, and driving approvals — so you can stay focused on the customer and moving the deal forward.
+I’ve already mapped the current state and context based on Salesforce, relevant Slack threads, and meeting transcripts and created a tailored execution plan.
+Please review the plan and adjust as needed. Once you approve, I’ll start running it and ping you when I need a decision or sign-off.
 
 SALES_ROOM_DM_FALLBACK:
-Jessica has prepared an execution plan. Review & approve in the Sales Room.
+Demi has prepared an execution plan. Review & approve in the Sales Room.
 
 JORDAN_FIRST_QUESTION:
 Customer: ACME
-Urgency: HIGH 
-Item: Customer asked if we  support SCIM provisioning?
-They need a solution for automated onboarding/offboarding.
+Urgency: HIGH
+Item:
+Customer asked if we support SCIM provisioning (needed for automated onboarding/offboarding).
 What I've done:
-I pulled the latest internal context and drafted a Product-ready response with sources.
-It seems we can support the SCIM provisioning by the end of the week according to [1,2,3]
+Source found: Identity Integrations Roadmap – Q1 2026 (updated Feb 12, 2026)
+It indicates:
+SCIM is not planned in H1 2026.
+Suggested positioning:
+We can still solve their outcome using SAML + API provisioning + our automation workflows.
+Suggested response to AE:
+“We don’t currently support SCIM provisioning. However, customers achieve the same automated lifecycle using SAML plus API-based provisioning and our certificate automation workflows. If you share your IdP and target apps, we’ll confirm the best path for your setup.”
 
 
 JORDAN_SECOND_QUESTION:
-Yes, this is the most updated document. I also made sure with the R&D lead.
+Good question.
+The recommendation is based on two sources:
+1. "Identity Integrations Roadmap – Q1 2026"  
+2. "Customer Lifecycle Automation – Technical Capabilities Overview v4.2"
+
+From the capabilities document, the automation workflows already support:
+• API-based user provisioning
+• automated certificate lifecycle
+• role-based onboarding triggers
+
+This means customers can achieve automated onboarding/offboarding even without SCIM, as long as their IdP supports SAML and API access.
+
+The suggested response is intentionally positioned around the outcome rather than the protocol, to avoid committing to SCIM specifically.\
+
 
 JORDAN_ACK_FINAL:
 Thanks, Jordan! I'll make sure Dan Tailor also approves this and let you know if there is a problem.
@@ -37,7 +57,7 @@ FEATURE_REQUEST_TO_JORDAN_FALLBACK:
 Feature request for ACME: SCIM provisioning – draft response for Jordan approval.
 
 BOT_AFTER_JORDAN_FIRST_REPLY:
-according to this document it seems we are able to execute it on time
+Yes, this is the most updated document. I also made sure with the R&D lead.
 
 BOT_AFTER_JORDAN_SECOND_REPLY:
 OK, great thank you. let me check with Dan and get his approval as you asked

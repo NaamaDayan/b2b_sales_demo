@@ -1,11 +1,5 @@
 import { useState } from 'react';
-
-const SUGGESTED_LABELS = ['Legal', 'Security', 'Product', 'Commercial', 'Stakeholders'];
-
-/** Slug for CSS class: "Product" → "product", "Some Label" → "some-label" */
-function labelSlug(label) {
-  return (label || '').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'default';
-}
+import { SUGGESTED_LABELS, labelSlug } from '../config/labels.js';
 
 export default function LabelsCell({ taskId, labels, editable, onUpdate }) {
   const [adding, setAdding] = useState(false);

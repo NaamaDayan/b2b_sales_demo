@@ -9,8 +9,8 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:3000',
       '/slack': 'http://localhost:3000',
-      '/execute-jessica': 'http://localhost:3000',
-      '/jessica-real-events': 'http://localhost:3000',
+      '/execute-Demi': 'http://localhost:3000',
+      '/Demi-real-events': 'http://localhost:3000',
     },
   },
 });

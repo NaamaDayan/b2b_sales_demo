@@ -1,5 +1,5 @@
 /**
- * Jessica Slack Bot - Express server and Slack Events API handler.
+ * Demi Slack Bot - Express server and Slack Events API handler.
  * Env vars: from .env locally (dotenv), from Lambda configuration on AWS.
  */
 
@@ -13,13 +13,24 @@ import serverlessExpress from '@vendia/serverless-express';
 import { verifySlackSignature, postMessage, sendDMWithBlocks } from './slack.js';
 import { getDmMessageContent, buildSalesRoomDmBlocks } from './salesRoomDm.js';
 import { loadMessages } from './botMessages.js';
-import * as peterFlow from './peterFlow.js';
 import * as featureRequestFlow from './featureRequestFlow.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// API Gateway (Lambda) often forwards path with stage prefix (e.g. /prod/api/...). Strip it so Express routes match.
+if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  app.use((req, res, next) => {
+    const p = req.path || req.url || '';
+    const stageMatch = p.match(/^\/[^/]+\/(api|slack|sales-room|send-welcome)/);
+    if (stageMatch) {
+      req.url = p.replace(/^\/[^/]+/, '') || '/';
+    }
+    next();
+  });
+}
 // Env vars read from Lambda configuration when deployed (no .env in Lambda)
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
@@ -32,7 +43,7 @@ const JAMES_2_USER_ID = (process.env.JAMES_2_USER_ID || '').trim();
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const SALES_ROOM_URL = `${BASE_URL}/sales-room?customer=ACME`;
 
-// Real flow: Jordan and optional Jordan 2 (Jessica messages both; if either replies, flow continues)
+// Real flow: Jordan and optional Jordan 2 (Demi messages both; if either replies, flow continues)
 const JORDAN_USER_ID = (process.env.JORDAN_USER_ID || '').trim();
 const JORDAN_2_USER_ID = (process.env.JORDAN_2_USER_ID || '').trim();
 
@@ -158,19 +169,6 @@ async function handleMessageEvent(event) {
     }
   }
 
-  // ----- Real flow: Jordan or Jordan 2 reply in their DM channel -----
-  if (peterFlow.isPeterMessage(channel, userId)) {
-    try {
-      const handled = await peterFlow.handlePeterReply(SLACK_BOT_TOKEN, channel, userId, text);
-      if (handled) {
-        console.log('[server] Jordan reply handled for real flow');
-        return;
-      }
-    } catch (err) {
-      console.error('[server] Jordan reply handling failed:', err.message);
-    }
-  }
-
   // ----- Echo only in non-DM channels (never echo in DMs) -----
   // In DMs, if we don't have flow state (e.g. different Lambda instance or cold start), we would wrongly
   // echo the user's message. Skip echo for DMs so Jordan's replies are never echoed when state is missing.
@@ -211,39 +209,21 @@ if (fs.existsSync(REACT_INDEX_PATH)) {
   });
 }
 
-// Scripted events config (pre-scripted Jessica demo flow). Served so Sales Room can load it.
+// Scripted events config (pre-scripted Demi demo flow). Served so Sales Room can load it.
 const SCRIPTED_EVENTS_JS_PATH = path.join(__dirname, 'public', 'scripted-events-config.js');
 app.get('/scripted-events-config.js', (req, res) => {
   const js = fs.readFileSync(SCRIPTED_EVENTS_JS_PATH, 'utf8');
   res.type('application/javascript').send(js);
 });
 
-// ----- Real flow: start Jessica–Jordan DM (called when AE clicks "Execute / Activate Jessica") -----
-// Support both GET and POST (Sales Room uses GET; some API Gateway setups only route GET)
-async function handleExecuteJessica(req, res) {
-  try {
-    if (!JORDAN_USER_ID && !JORDAN_2_USER_ID) {
-      console.log('[server] /execute-jessica: JORDAN_USER_ID and JORDAN_2_USER_ID not set');
-      return res.json({ ok: true, realFlowStarted: false, reason: 'JORDAN_USER_ID (or JORDAN_2_USER_ID) not set' });
-    }
-    const result = await peterFlow.startRealFlow(SLACK_BOT_TOKEN, JORDAN_USER_ID, JORDAN_2_USER_ID);
-    console.log('[server] /execute-jessica: realFlowStarted=', result.started);
-    res.json({ ok: true, realFlowStarted: result.started });
-  } catch (err) {
-    console.error('[server] /execute-jessica error:', err.message);
-    res.status(500).json({ ok: false, error: err.message });
-  }
-}
-app.get('/execute-jessica', handleExecuteJessica);
-app.post('/execute-jessica', handleExecuteJessica);
-
-// ----- Real flow: poll for Jordan events and task state (Sales Room merges into Timeline) -----
-app.get('/jessica-real-events', (req, res) => {
-  res.json(peterFlow.getRealEvents());
-});
+// Legacy: flow is now task-triggered only (Execute on Important Feature Request task)
+app.get('/execute-Demi', (req, res) => res.status(410).json({ error: 'Gone. Use Execute on the Important Feature Request task in the Sales Room.' }));
+app.post('/execute-Demi', (req, res) => res.status(410).json({ error: 'Gone. Use Execute on the Important Feature Request task in the Sales Room.' }));
+app.get('/Demi-real-events', (req, res) => res.status(410).json({ error: 'Gone. Poll /api/tasks/important-feature-request/state instead.' }));
 
 // ----- Important Feature Request: start real Slack flow and poll state -----
 app.post('/api/tasks/important-feature-request/start', async (req, res) => {
+  console.log('[server] POST /api/tasks/important-feature-request/start received');
   try {
     if (!JORDAN_USER_ID && !JORDAN_2_USER_ID) {
       return res.status(400).json({ ok: false, started: false, error: 'JORDAN_USER_ID or JORDAN_2_USER_ID must be set' });
@@ -262,14 +242,22 @@ app.post('/api/tasks/important-feature-request/start', async (req, res) => {
     return res.json({ ok: true, started: result.started });
   } catch (err) {
     const message = (err && err.message) || String(err);
+    const stack = (err && err.stack) || '';
     console.error('[server] important-feature-request start error:', message);
-    if (err && err.stack) console.error('[server] stack:', err.stack);
-    return res.status(500).json({ ok: false, started: false, error: message || 'Internal Server Error' });
+    if (stack) console.error('[server] stack:', stack);
+    if (!res.headersSent) {
+      return res.status(500).json({ ok: false, started: false, error: message || 'Internal Server Error' });
+    }
   }
 });
 
-app.get('/api/tasks/important-feature-request/state', (req, res) => {
-  res.json(featureRequestFlow.getState());
+app.get('/api/tasks/important-feature-request/state', async (req, res) => {
+  try {
+    res.json(await featureRequestFlow.getState());
+  } catch (err) {
+    console.error('[server] important-feature-request state error:', err?.message || err);
+    res.status(500).json({ events: [], moveTo: null, phase: 'idle' });
+  }
 });
 
 // ----- Trigger Sales Room DM (for Lambda: call once to send the DM with link + button) -----
@@ -285,7 +273,13 @@ app.get('/send-welcome', async (req, res) => {
 
 // ----- Health / root -----
 app.get('/', (req, res) => {
-  res.send('Jessica Slack Bot is running.');
+  res.send('Demi Slack Bot is running.');
+});
+
+// Log unmatched requests and return 404 (helps debug API Gateway path/stage issues)
+app.use((req, res) => {
+  console.log('[server] Unmatched request:', req.method, req.path || req.url);
+  res.status(404).json({ error: 'Not found', path: req.path || req.url });
 });
 
 // Lambda: pass (event, context) only so the library returns a Promise; Node.js 24+ requires promise-based handlers

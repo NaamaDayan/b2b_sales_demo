@@ -7,17 +7,17 @@ Using **S3** is the simplest way to share flow state across Lambda containers: n
 ## Step 1: Create an S3 bucket
 
 1. In **AWS Console** go to **S3** → **Create bucket**.
-2. Choose a **bucket name** (e.g. `jessica-bot-flow-state`) and a **region** (same as your Lambda is best).
+2. Choose a **bucket name** (e.g. `Demi-bot-flow-state`) and a **region** (same as your Lambda is best).
 3. Leave default settings (or enable encryption if required). **Create bucket**.
 
 ---
 
 ## Step 2: Add the env var to Lambda
 
-1. Open your **Lambda** function (Jessica bot) → **Configuration** → **Environment variables** → **Edit**.
+1. Open your **Lambda** function (Demi bot) → **Configuration** → **Environment variables** → **Edit**.
 2. Add:
    - **Key:** `FLOW_STATE_S3_BUCKET`
-   - **Value:** your bucket name (e.g. `jessica-bot-flow-state`).
+   - **Value:** your bucket name (e.g. `Demi-bot-flow-state`).
 3. Save.
 
 The app stores one object in the bucket: `flow-state/feature-request.json`. It creates/updates/deletes it automatically; you don’t create the file yourself.
@@ -50,7 +50,7 @@ The app stores one object in the bucket: `flow-state/feature-request.json`. It c
 }
 ```
 
-Replace `YOUR-BUCKET-NAME` with your bucket name (e.g. `jessica-bot-flow-state`). Attach this policy to the Lambda execution role.
+Replace `YOUR-BUCKET-NAME` with your bucket name (e.g. `Demi-bot-flow-state`). Attach this policy to the Lambda execution role.
 
 ---
 

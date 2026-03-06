@@ -83,7 +83,7 @@ export default function App() {
   return (
     <div className="app-root">
       <main className="main-content">
-        <h1 className="portal-title">Deal Execution Portal — ACME</h1>
+        <h1 className="portal-title">Deal Execution Space — ACME</h1>
         <DealDetails />
         <TabBar
           activeTab={activeTab}

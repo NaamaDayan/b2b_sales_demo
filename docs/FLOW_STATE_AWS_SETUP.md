@@ -69,7 +69,7 @@ Access points give Lambda a fixed path and permissions on the file system.
 
 ### Step 4: Add EFS to your Lambda function
 
-1. Open **Lambda** in the AWS Console → select your **Jessica bot** function.
+1. Open **Lambda** in the AWS Console → select your **Demi bot** function.
 2. Go to **Configuration → General configuration → Edit**.
    - If the function has **No VPC** configured, you must put it in a VPC that can reach the EFS mount targets (same VPC as EFS; use private subnets with NAT if the function needs internet for Slack).
 3. Scroll to **File system** (or **Configuration → File system**). Click **Add file system**.

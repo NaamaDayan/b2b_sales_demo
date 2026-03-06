@@ -135,13 +135,23 @@ export async function save(state, channelUserKeys = null) {
   for (const k of keys) {
     byChannel[k] = serializable;
   }
-  const data = { byChannel, flowId: FLOW_ID };
+  const data = { byChannel, flowId: FLOW_ID, flowState: serializable };
   memoryState = data;
   if (S3_BUCKET) {
     await writeToS3(data);
   } else {
     writeToFile(data);
   }
+}
+
+/**
+ * Get the current flow state (for polling). Used so any Lambda can return completed state.
+ * @returns {Promise<object|null>} serialized state (phase, events, moveTo, ...) or null
+ */
+export async function getFlowState() {
+  const data = S3_BUCKET ? await readFromS3() : getDataSync();
+  if (!data || !data.flowState) return null;
+  return data.flowState;
 }
 
 /**
@@ -169,15 +179,18 @@ export async function clear(channelUserKeys) {
     delete data.byChannel[k];
   }
   if (Object.keys(data.byChannel).length === 0) {
-    memoryState = null;
+    // Keep flowState so polling getState() can still return the completed state from any Lambda
+    memoryState = { byChannel: {}, flowId: FLOW_ID, flowState: data.flowState || null };
     if (S3_BUCKET) {
-      await deleteFromS3();
+      await writeToS3(memoryState);
     } else {
       const p = getStatePath();
-      if (p && fs.existsSync(p)) {
+      if (p) {
         try {
-          fs.unlinkSync(p);
-        } catch {}
+          writeToFile(memoryState);
+        } catch (err) {
+          console.warn('[flowStateStore] Failed to write after clear:', err.message);
+        }
       }
     }
   } else {

@@ -1,9 +1,9 @@
 /**
  * Mock agent workflows and execution driver.
- * Designed so real synchronous events (e.g. Slack) can be injected later:
- * - runTaskExecution() can call backend POST /api/tasks/:id/execute and subscribe to trace updates.
- * - "Wait for X" steps can be replaced with wait-for-event from backend (e.g. SSE/WebSocket).
+ * Workflow steps from config/reasoningTraceWorkflows.js.
  */
+
+import { WORKFLOWS, EMPLOYEE_RESPONSE_DELAY_MS } from './config/reasoningTraceWorkflows.js';
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -29,40 +29,9 @@ function formatTime() {
  * @property {number} [delayMs]
  * @property {'done'|'requiresAttention'|null} [moveTo]
  * @property {'running'|'waiting'|'completed'} [status]
+ * @property {string} [link] - e.g. "view", "open source"
+ * @property {string} [source] - icon key: Drive, Salesforce, Gong, Email, Slack
  */
-
-// Delay (ms) after "send to employee" / "waiting for employee" steps to simulate response time
-const EMPLOYEE_RESPONSE_DELAY_MS = 16000;
-
-const WORKFLOWS = {
-  'security-questionnaire': [
-    { message: 'Draft response based on updated documents', status: 'running' },
-    { message: 'Send to @sarah_grossman for approval', status: 'running' },
-    { message: 'Waiting for @sarah_grossman…', delayMs: EMPLOYEE_RESPONSE_DELAY_MS, status: 'waiting' },
-    { message: 'Received approval from @sarah_grossman', status: 'completed' },
-    { message: 'Send to @nina_park for approval', status: 'running' },
-    { message: 'Waiting for @nina_park…', delayMs: EMPLOYEE_RESPONSE_DELAY_MS, status: 'waiting' },
-    { message: 'Received approval from @nina_park', status: 'completed' },
-    { message: 'Update security questionnaire file in workspace', status: 'running' },
-    { message: 'Task completed.', moveTo: 'done', status: 'completed' },
-  ],
-  'discount-exception': [
-    { message: 'Evaluate whether to grant discount', status: 'running' },
-    { message: 'Ask @DealDesk for recommendation', status: 'running' },
-    { message: 'Waiting for @DealDesk…', delayMs: EMPLOYEE_RESPONSE_DELAY_MS, status: 'waiting' },
-    { message: 'Received reply from @DealDesk', status: 'completed' },
-    { message: 'Task remains under review.', status: 'completed' },
-    // moveTo omitted — task stays in Under Control
-  ],
-  'scim-provisioning': [
-    { message: 'Check SCIM support', status: 'running' },
-    { message: 'Send proposed answer to Product', status: 'running' },
-    { message: 'Waiting for Product…', delayMs: EMPLOYEE_RESPONSE_DELAY_MS, status: 'waiting' },
-    { message: 'Product responded', status: 'completed' },
-    { message: 'Draft email to customer', status: 'running' },
-    { message: 'Returning task to Requires Attention so AE can send the email.', moveTo: 'requiresAttention', status: 'completed' },
-  ],
-};
 
 let traceIdCounter = 0;
 function nextTraceId() {
@@ -82,7 +51,7 @@ export async function runMockWorkflow(task, callbacks) {
     taskId: task.id,
     taskTitle: task.title,
     timestamp: formatTime(),
-    message: 'Agent (Jessica) started working on this task.',
+    message: 'Demi started working on this task.',
     status: 'running',
     source: 'agent',
   });
@@ -112,6 +81,8 @@ export async function runMockWorkflow(task, callbacks) {
       message: step.message,
       status: step.status || 'running',
       source: 'agent',
+      link: step.link,
+      traceSource: step.source, // icon key: Drive, Salesforce, etc.
     };
     onTraceEntry(entry);
     if (step.moveTo) {
@@ -135,25 +106,7 @@ export async function runImportantFeatureRequestWorkflow(task, callbacks) {
     taskId: task.id,
     taskTitle: task.title,
     timestamp: formatTime(),
-    message: 'Agent (Jessica) started working on this task.',
-    status: 'running',
-    source: 'agent',
-  });
-  onTraceEntry({
-    id: nextTraceId(),
-    taskId: task.id,
-    taskTitle: task.title,
-    timestamp: formatTime(),
-    message: 'Drafted response to feature request question for approval',
-    status: 'running',
-    source: 'agent',
-  });
-  onTraceEntry({
-    id: nextTraceId(),
-    taskId: task.id,
-    taskTitle: task.title,
-    timestamp: formatTime(),
-    message: 'Sent proposed response to Jordan for approval',
+    message: 'Demi started working on this task.',
     status: 'running',
     source: 'agent',
   });
@@ -176,7 +129,7 @@ export async function runImportantFeatureRequestWorkflow(task, callbacks) {
       startData.error = (text && text.trim()) ? text.slice(0, 200) : (startRes.statusText || 'Server error');
     }
     if (!startData.ok || !startData.started) {
-      const reason = startData.error || startData.reason || 'check JORDAN_USER_ID / JORDAN_2_USER_ID and SLACK_BOT_TOKEN';
+      const reason = startData.error || startData.message || startData.reason || (typeof text === 'string' && text.length < 300 ? text : null) || 'check JORDAN_USER_ID / JORDAN_2_USER_ID and SLACK_BOT_TOKEN';
       onTraceEntry({
         id: nextTraceId(),
         taskId: task.id,
@@ -225,6 +178,8 @@ export async function runImportantFeatureRequestWorkflow(task, callbacks) {
           message: e.message,
           status: e.status || 'completed',
           source: e.source || 'slack',
+          link: e.link,
+          traceSource: e.traceSource || (e.source === 'slack' ? 'Slack' : undefined),
         });
       }
       lastSeenEventCount = events.length;
