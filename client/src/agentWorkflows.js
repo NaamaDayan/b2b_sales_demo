@@ -82,7 +82,10 @@ export async function runMockWorkflow(task, callbacks) {
       status: step.status || 'running',
       source: 'agent',
       link: step.link,
-      traceSource: step.source, // icon key: Drive, Salesforce, etc.
+      traceSource: step.source,
+      fileRef: step.fileRef,
+      detail: step.detail,
+      quote: step.quote,
     };
     onTraceEntry(entry);
     if (step.moveTo) {
@@ -97,9 +100,17 @@ const POLL_INTERVAL_MS = 2500;
  * Hybrid workflow for Important Feature Request: two mock steps, then start real Slack flow and poll for events.
  * @param {Object} task - { id, title, workflowId }
  * @param {Object} callbacks - { onTraceEntry, onMoveTask }
+ * @param {string|null} roomId - room identifier (null = legacy unscoped)
  */
-export async function runImportantFeatureRequestWorkflow(task, callbacks) {
+export async function runImportantFeatureRequestWorkflow(task, callbacks, roomId) {
   const { onTraceEntry, onMoveTask } = callbacks;
+
+  const startUrl = roomId
+    ? `/api/room/${roomId}/execute`
+    : '/api/tasks/important-feature-request/start';
+  const pollUrl = roomId
+    ? `/api/room/${roomId}/flow-state`
+    : '/api/tasks/important-feature-request/state';
 
   onTraceEntry({
     id: nextTraceId(),
@@ -115,7 +126,7 @@ export async function runImportantFeatureRequestWorkflow(task, callbacks) {
   let pollTimerId = null;
 
   try {
-    const startRes = await fetch('/api/tasks/important-feature-request/start', { method: 'POST' });
+    const startRes = await fetch(startUrl, { method: 'POST' });
     const text = await startRes.text();
     let startData = { ok: false, started: false };
     if (text && text.trim()) {
@@ -163,7 +174,7 @@ export async function runImportantFeatureRequestWorkflow(task, callbacks) {
 
   const poll = async () => {
     try {
-      const res = await fetch('/api/tasks/important-feature-request/state');
+      const res = await fetch(pollUrl);
       const data = await res.json();
       if (!res.ok || !data.events) return;
 
@@ -180,6 +191,9 @@ export async function runImportantFeatureRequestWorkflow(task, callbacks) {
           source: e.source || 'slack',
           link: e.link,
           traceSource: e.traceSource || (e.source === 'slack' ? 'Slack' : undefined),
+          quote: e.quote,
+          detail: e.detail,
+          fileRef: e.fileRef,
         });
       }
       lastSeenEventCount = events.length;
@@ -201,10 +215,11 @@ export async function runImportantFeatureRequestWorkflow(task, callbacks) {
  * Execution driver: mock workflow or hybrid (Important Feature Request) real Slack flow.
  * @param {Object} task
  * @param {Object} callbacks - same as runMockWorkflow
+ * @param {string|null} roomId - room identifier for room-scoped endpoints
  */
-export function runTaskExecution(task, callbacks) {
+export function runTaskExecution(task, callbacks, roomId = null) {
   if (task.workflowId === 'important-feature-request') {
-    return runImportantFeatureRequestWorkflow(task, callbacks);
+    return runImportantFeatureRequestWorkflow(task, callbacks, roomId);
   }
   return runMockWorkflow(task, callbacks);
 }

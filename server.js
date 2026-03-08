@@ -3,6 +3,7 @@
  * Env vars: from .env locally (dotenv), from Lambda configuration on AWS.
  */
 
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -10,10 +11,10 @@ import { fileURLToPath } from 'url';
 import './env.js';
 import express from 'express';
 import serverlessExpress from '@vendia/serverless-express';
-import { verifySlackSignature, postMessage, sendDMWithBlocks } from './slack.js';
-import { getDmMessageContent, buildSalesRoomDmBlocks } from './salesRoomDm.js';
-import { loadMessages } from './botMessages.js';
+import { verifySlackSignature, postMessage, sendDMWithBlocks, sendDM } from './slack.js';
+import { buildWelcomeDmBlocks, WELCOME_DM_FALLBACK, getJamesAfterApproveMessage } from './config/slackMessages.js';
 import * as featureRequestFlow from './featureRequestFlow.js';
+import * as roomStateStore from './roomStateStore.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -41,7 +42,18 @@ const JAMES_2_USER_ID = (process.env.JAMES_2_USER_ID || '').trim();
 
 // Base URL for Sales Room link in Slack (e.g. http://localhost:3000 or your ngrok/deployed URL)
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
-const SALES_ROOM_URL = `${BASE_URL}/sales-room?customer=ACME`;
+
+function generateRoomId() {
+  return crypto.randomBytes(6).toString('hex');
+}
+
+function salesRoomUrl(roomId) {
+  return `${BASE_URL}/sales-room?customer=ACME&room=${roomId}`;
+}
+
+// Tracks the most-recently-created room so the feature-request Slack flow
+// knows which room to associate with when triggered outside the UI.
+let currentRoomId = null;
 
 // Real flow: Jordan and optional Jordan 2 (Demi messages both; if either replies, flow continues)
 const JORDAN_USER_ID = (process.env.JORDAN_USER_ID || '').trim();
@@ -51,8 +63,7 @@ const JORDAN_2_USER_ID = (process.env.JORDAN_2_USER_ID || '').trim();
 const DAN_SECURITY_USER_ID = (process.env.DAN_SECURITY_USER_ID || process.env.dan_security_user_id || '').trim();
 
 /**
- * On startup (and /send-welcome): read dm-message.txt, build Block Kit (section + button), send DM to AE(s).
- * Sends to SLACK_WELCOME_USER_ID and, if set, SLACK_WELCOME_2_USER_ID.
+ * On startup (and /send-welcome): build welcome DM from config/slackMessages.js and send to James (and optional JAMES_2).
  */
 async function sendSalesRoomDM() {
   if (!SLACK_BOT_TOKEN) {
@@ -61,18 +72,26 @@ async function sendSalesRoomDM() {
   if (!JAMES_USER_ID || JAMES_USER_ID === 'U01234567') {
     throw new Error('JAMES_USER_ID is not set or still the placeholder. Set it to your Slack user ID (e.g. U0ABC1234).');
   }
-  const messageText = getDmMessageContent();
-  const blocks = buildSalesRoomDmBlocks(messageText, SALES_ROOM_URL);
-  const fallbackText = loadMessages().SALES_ROOM_DM_FALLBACK || '';
+
+  const roomId = generateRoomId();
+  currentRoomId = roomId;
+  const url = salesRoomUrl(roomId);
+
+  const blocks = buildWelcomeDmBlocks(url, JORDAN_USER_ID || undefined);
+  const fallbackText = WELCOME_DM_FALLBACK || '';
 
   const userIds = [JAMES_USER_ID];
   if (JAMES_2_USER_ID) userIds.push(JAMES_2_USER_ID);
 
   for (const userId of userIds) {
     await sendDMWithBlocks(SLACK_BOT_TOKEN, userId, blocks, fallbackText);
-    console.log('[server] Sales Room DM sent to user', userId, 'with link', SALES_ROOM_URL);
+    console.log('[server] Sales Room DM sent to user', userId, 'with link', url, '(room=%s)', roomId);
   }
+  return roomId;
 }
+
+// JSON body parser for room state API
+app.use('/api/room', express.json({ limit: '1mb' }));
 
 // ----- Events endpoint: need raw body for signature verification -----
 app.post(
@@ -126,6 +145,55 @@ app.post(
       return res.status(200).send();
     }
 
+    res.status(200).send();
+  }
+);
+
+// ----- Interactivity: button clicks (e.g. Approve in welcome DM) -----
+// Slack sends POST application/x-www-form-urlencoded with payload=<json>. Respond within 3s.
+app.post(
+  '/slack/interactions',
+  express.raw({ type: 'application/x-www-form-urlencoded', limit: '1mb' }),
+  async (req, res) => {
+    const rawBody = req.body;
+    const signature = req.headers['x-slack-signature'];
+    const timestamp = req.headers['x-slack-request-timestamp'];
+
+    if (!SLACK_SIGNING_SECRET || !signature || !timestamp) {
+      return res.status(401).send();
+    }
+    const body = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody || ''), 'utf8');
+    if (!verifySlackSignature(SLACK_SIGNING_SECRET, signature, timestamp, body)) {
+      return res.status(401).send();
+    }
+
+    let payload;
+    try {
+      const params = new URLSearchParams(body.toString('utf8'));
+      const payloadStr = params.get('payload');
+      if (!payloadStr) return res.status(200).send();
+      payload = JSON.parse(payloadStr);
+    } catch (e) {
+      console.error('[server] interactions payload parse error:', e?.message);
+      return res.status(200).send();
+    }
+
+    if (payload.type === 'block_actions') {
+      const action = payload.actions?.[0];
+      if (action?.action_id === 'james_approve_scim') {
+        const userId = payload.user?.id;
+        if (userId && SLACK_BOT_TOKEN) {
+          try {
+            const followUpText = getJamesAfterApproveMessage(JORDAN_USER_ID || JORDAN_2_USER_ID);
+            await sendDM(SLACK_BOT_TOKEN, userId, followUpText);
+            console.log('[server] James approved via Slack; ack DM sent to', userId);
+          } catch (err) {
+            console.error('[server] Approve button handler error:', err?.message || err);
+          }
+          return res.status(200).send();
+        }
+      }
+    }
     res.status(200).send();
   }
 );
@@ -201,6 +269,8 @@ const REACT_INDEX_PATH = path.join(CLIENT_DIST, 'index.html');
 if (fs.existsSync(REACT_INDEX_PATH)) {
   app.get('/sales-room', (req, res) => res.sendFile(REACT_INDEX_PATH));
   app.get('/sales-room/', (req, res) => res.sendFile(REACT_INDEX_PATH));
+  app.get('/sales-room/vp-sales', (req, res) => res.sendFile(REACT_INDEX_PATH));
+  app.get('/sales-room/vp-sales/', (req, res) => res.sendFile(REACT_INDEX_PATH));
   app.use('/sales-room', express.static(CLIENT_DIST, { index: false }));
 } else {
   app.get('/sales-room', (req, res) => {
@@ -222,8 +292,71 @@ app.post('/execute-Demi', (req, res) => res.status(410).json({ error: 'Gone. Use
 app.get('/Demi-real-events', (req, res) => res.status(410).json({ error: 'Gone. Poll /api/tasks/important-feature-request/state instead.' }));
 
 // ----- Important Feature Request: start real Slack flow and poll state -----
+// Legacy endpoints kept for backwards compatibility; delegate to the room-scoped flow
 app.post('/api/tasks/important-feature-request/start', async (req, res) => {
-  console.log('[server] POST /api/tasks/important-feature-request/start received');
+  console.log('[server] POST /api/tasks/important-feature-request/start received (legacy)');
+  try {
+    if (!JORDAN_USER_ID && !JORDAN_2_USER_ID) {
+      return res.status(400).json({ ok: false, started: false, error: 'JORDAN_USER_ID or JORDAN_2_USER_ID must be set' });
+    }
+    if (!SLACK_BOT_TOKEN) {
+      return res.status(500).json({ ok: false, started: false, error: 'SLACK_BOT_TOKEN not set' });
+    }
+    const roomId = currentRoomId || 'default';
+    const result = await featureRequestFlow.startFlow(
+      SLACK_BOT_TOKEN,
+      JORDAN_USER_ID,
+      JORDAN_2_USER_ID,
+      DAN_SECURITY_USER_ID || undefined,
+      JAMES_USER_ID,
+      JAMES_2_USER_ID,
+      roomId
+    );
+    return res.json({ ok: true, started: result.started });
+  } catch (err) {
+    const message = (err && err.message) || String(err);
+    console.error('[server] important-feature-request start error:', message);
+    if (!res.headersSent) {
+      return res.status(500).json({ ok: false, started: false, error: message || 'Internal Server Error' });
+    }
+  }
+});
+
+app.get('/api/tasks/important-feature-request/state', async (req, res) => {
+  try {
+    const roomId = currentRoomId || 'default';
+    res.json(await featureRequestFlow.getState(roomId));
+  } catch (err) {
+    console.error('[server] important-feature-request state error:', err?.message || err);
+    res.status(500).json({ events: [], moveTo: null, phase: 'idle' });
+  }
+});
+
+// ----- Room state: persist full UI state per demo session -----
+
+app.get('/api/room/:roomId/state', async (req, res) => {
+  try {
+    const data = await roomStateStore.load(req.params.roomId);
+    res.json(data);
+  } catch (err) {
+    console.error('[server] room state load error:', err?.message || err);
+    res.status(500).json(null);
+  }
+});
+
+app.post('/api/room/:roomId/state', async (req, res) => {
+  try {
+    const saved = await roomStateStore.save(req.params.roomId, req.body || {});
+    res.json({ ok: true, updatedAt: saved.updatedAt });
+  } catch (err) {
+    console.error('[server] room state save error:', err?.message || err);
+    res.status(500).json({ ok: false, error: err?.message || 'save failed' });
+  }
+});
+
+app.post('/api/room/:roomId/execute', async (req, res) => {
+  const { roomId } = req.params;
+  console.log('[server] POST /api/room/%s/execute received', roomId);
   try {
     if (!JORDAN_USER_ID && !JORDAN_2_USER_ID) {
       return res.status(400).json({ ok: false, started: false, error: 'JORDAN_USER_ID or JORDAN_2_USER_ID must be set' });
@@ -237,25 +370,24 @@ app.post('/api/tasks/important-feature-request/start', async (req, res) => {
       JORDAN_2_USER_ID,
       DAN_SECURITY_USER_ID || undefined,
       JAMES_USER_ID,
-      JAMES_2_USER_ID
+      JAMES_2_USER_ID,
+      roomId
     );
     return res.json({ ok: true, started: result.started });
   } catch (err) {
     const message = (err && err.message) || String(err);
-    const stack = (err && err.stack) || '';
-    console.error('[server] important-feature-request start error:', message);
-    if (stack) console.error('[server] stack:', stack);
+    console.error('[server] room execute error:', message);
     if (!res.headersSent) {
       return res.status(500).json({ ok: false, started: false, error: message || 'Internal Server Error' });
     }
   }
 });
 
-app.get('/api/tasks/important-feature-request/state', async (req, res) => {
+app.get('/api/room/:roomId/flow-state', async (req, res) => {
   try {
-    res.json(await featureRequestFlow.getState());
+    res.json(await featureRequestFlow.getState(req.params.roomId));
   } catch (err) {
-    console.error('[server] important-feature-request state error:', err?.message || err);
+    console.error('[server] room flow-state error:', err?.message || err);
     res.status(500).json({ events: [], moveTo: null, phase: 'idle' });
   }
 });
@@ -263,8 +395,8 @@ app.get('/api/tasks/important-feature-request/state', async (req, res) => {
 // ----- Trigger Sales Room DM (for Lambda: call once to send the DM with link + button) -----
 app.get('/send-welcome', async (req, res) => {
   try {
-    await sendSalesRoomDM();
-    res.send('Sales Room DM sent to welcome user(s) (JAMES_USER_ID and, if set, JAMES_2_USER_ID) with link and "Review & Approve Plan" button.');
+    const roomId = await sendSalesRoomDM();
+    res.send(`Sales Room DM sent (room=${roomId}). Link: ${salesRoomUrl(roomId)}`);
   } catch (err) {
     console.error('[server] /send-welcome error:', err.message);
     res.status(500).send('Failed to send DM: ' + err.message);

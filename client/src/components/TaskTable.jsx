@@ -2,8 +2,9 @@ import { useCallback, useState, Fragment } from 'react';
 import ValidatorsCell from './ValidatorsCell';
 import LabelsCell from './LabelsCell';
 
-const TABLE_COLUMNS_ATTENTION = 9; // expand + Sources, Title, Labels, Urgency, Needed, Assign to, ETA, Actions
-const TABLE_COLUMNS_DONE = 4; // expand + Task, Label, Assign to
+const TABLE_COLUMNS_ATTENTION = 8; // expand + Task, Track, Labels, Deal Risk, Assign to, ETA, Suggested action
+const TABLE_COLUMNS_CONTROL = 7; // expand + Task, Track, Labels, Deal Risk, Assign to, ETA (no Suggested action)
+const TABLE_COLUMNS_DONE = 5; // expand + Task, Track, Label, Collaborators
 
 // Icons from client/public/icons — in Vite dev public is at root (/icons/); in build we use base (e.g. /sales-room/icons/)
 const ICON_BASE =
@@ -88,45 +89,29 @@ function ActivityLog({ agentLog }) {
   );
 }
 
-/** Unique source names from task.agentLog (for Sources column preview) */
-function getTaskSources(task) {
-  const log = Array.isArray(task.agentLog) ? task.agentLog : [];
-  const sources = [...new Set(log.map((e) => e.source).filter(Boolean))];
-  return sources;
+function trackSlug(track) {
+  if (!track || typeof track !== 'string') return 'default';
+  return track.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'default';
 }
 
-function SourcesCell({ task }) {
-  const sources = getTaskSources(task);
-  if (sources.length === 0) {
-    return <td className="td-sources sources-cell">—</td>;
-  }
+function TrackCell({ track }) {
+  const slug = trackSlug(track);
   return (
-    <td className="td-sources sources-cell" title={sources.map((s) => `Source: ${s}`).join(', ')}>
-      <span className="sources-preview">
-        {sources.map((source) =>
-          SOURCE_ICONS[source] ? (
-            <img
-              key={source}
-              src={SOURCE_ICONS[source]}
-              alt=""
-              className="sources-preview-icon"
-              width={20}
-              height={20}
-              title={source}
-            />
-          ) : null
-        )}
+    <td className="td-track">
+      <span className={`track-pill track-pill--${slug}`}>
+        {track || '—'}
       </span>
     </td>
   );
 }
 
-function UrgencyCell({ urgency }) {
+function DealRiskCell({ urgency, dealRiskReason, whyItMatters }) {
   const level = (urgency || '').toLowerCase();
   const className = level ? `urgency-pill urgency-pill--${level}` : 'urgency-pill';
+  const hoverText = dealRiskReason || whyItMatters || urgency || '';
   return (
     <td className="td-urgency">
-      <span className={className} title={urgency || ''}>
+      <span className={className} title={hoverText}>
         {urgency || '—'}
       </span>
     </td>
@@ -143,8 +128,7 @@ export default function TaskTable({
 }) {
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const editable = tabKey === 'attention';
-  const showExecute = tabKey === 'attention';
-  const showChat = tabKey === 'attention' || tabKey === 'control';
+  const showApprove = tabKey === 'attention';
 
   const handleFieldBlur = useCallback(
     (taskId, field, value) => {
@@ -158,7 +142,12 @@ export default function TaskTable({
   }, []);
 
   const isDoneTab = tabKey === 'done';
-  const tableColumns = isDoneTab ? TABLE_COLUMNS_DONE : TABLE_COLUMNS_ATTENTION;
+  const isControlTab = tabKey === 'control';
+  const tableColumns = isDoneTab
+    ? TABLE_COLUMNS_DONE
+    : isControlTab
+      ? TABLE_COLUMNS_CONTROL
+      : TABLE_COLUMNS_ATTENTION;
 
   return (
     <div className="portal-table-wrap">
@@ -169,19 +158,19 @@ export default function TaskTable({
             {isDoneTab ? (
               <>
                 <th>Task</th>
+                <th>Track</th>
                 <th>Label</th>
-                <th>Assign to</th>
+                <th>Collaborators</th>
               </>
             ) : (
               <>
-                <th>Sources</th>
-                <th>Title</th>
+                <th>Task</th>
+                <th>Track</th>
                 <th>Labels</th>
-                <th>Urgency</th>
-                <th>Needed from you</th>
+                <th>Deal Risk</th>
                 <th>Assign to</th>
                 <th>ETA</th>
-                <th>Actions</th>
+                {!isControlTab && <th>Suggested action</th>}
               </>
             )}
           </tr>
@@ -210,6 +199,7 @@ export default function TaskTable({
                 {isDoneTab ? (
                   <>
                     <td>{task.title}</td>
+                    <TrackCell track={task.track} />
                     <td className="labels-td">
                       <LabelsCell
                         taskId={task.id}
@@ -229,18 +219,18 @@ export default function TaskTable({
                   </>
                 ) : (
                   <>
-                    <SourcesCell task={task} />
                     <td>
                       {editable ? (
                         <EditableCell
                           value={task.title}
-                          placeholder="Title"
+                          placeholder="Task"
                           onBlur={(v) => handleFieldBlur(task.id, 'title', v)}
                         />
                       ) : (
                         task.title
                       )}
                     </td>
+                    <TrackCell track={task.track} />
                     <td className="labels-td">
                       <LabelsCell
                         taskId={task.id}
@@ -249,10 +239,11 @@ export default function TaskTable({
                         onUpdate={onUpdateTask}
                       />
                     </td>
-                    <UrgencyCell urgency={task.urgency} />
-                    <td className="read-only-cell">
-                      {task.neededFromYou}
-                    </td>
+                    <DealRiskCell
+                      urgency={task.urgency}
+                      dealRiskReason={task.dealRiskReason}
+                      whyItMatters={task.whyItMatters}
+                    />
                     <td className="validators-td">
                       <ValidatorsCell
                         taskId={task.id}
@@ -272,29 +263,23 @@ export default function TaskTable({
                         task.eta
                       )}
                     </td>
-                    <td>
-                      <div className="btn-row">
-                        {showExecute && (
-                          <button
-                            type="button"
-                            className="btn-execute-task"
-                            onClick={() => onExecute(task)}
-                            disabled={executingTaskIds.has(task.id)}
-                          >
-                            {executingTaskIds.has(task.id) ? 'Running…' : 'Execute'}
-                          </button>
-                        )}
-                        {showChat && (
-                          <button
-                            type="button"
-                            className="btn-chat btn-chat-task"
-                            onClick={() => onChat(task)}
-                          >
-                            {tabKey === 'control' ? '💬 Chat' : 'Chat'}
-                          </button>
-                        )}
-                      </div>
-                    </td>
+                    {!isControlTab && (
+                      <td className="td-suggested-action">
+                        <div className="suggested-action-content">
+                          <span className="suggested-action-text">{task.neededFromYou}</span>
+                          {showApprove && (
+                            <button
+                              type="button"
+                              className="btn-approve-task"
+                              onClick={() => onExecute(task)}
+                              disabled={executingTaskIds.has(task.id)}
+                            >
+                              {executingTaskIds.has(task.id) ? 'Running…' : 'Approve'}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </>
                 )}
               </tr>

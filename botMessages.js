@@ -12,7 +12,7 @@ const MESSAGES_PATH = path.join(__dirname, 'feature-request-messages.txt');
 
 // Single source of truth: feature-request-messages.txt. No message text here—only keys; missing file yields empty strings.
 const MESSAGE_KEYS = [
-  'DM_MESSAGE', 'SALES_ROOM_DM_FALLBACK', 'JORDAN_FIRST_QUESTION', 'JORDAN_SECOND_QUESTION', 'JORDAN_ACK_FINAL',
+  'JORDAN_FIRST_QUESTION', 'JORDAN_SECOND_QUESTION', 'JORDAN_ACK_FINAL',
   'FEATURE_REQUEST_TO_JORDAN_FALLBACK', 'BOT_AFTER_JORDAN_FIRST_REPLY', 'BOT_AFTER_JORDAN_SECOND_REPLY', 'MESSAGE_TO_JAMES',
   'TASK_WHY_IT_MATTERS_RETURNED', 'TASK_WHAT_PREPARED_RETURNED', 'TASK_NEEDED_FROM_YOU_RETURNED',
 ];

@@ -74,3 +74,21 @@ Replace `YOUR-BUCKET-NAME` with your bucket name (e.g. `Demi-bot-flow-state`). A
 | IAM        | `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` on `arn:aws:s3:::BUCKET/*` |
 
 No VPC or EFS needed. If you already use **FLOW_STATE_FILE** (e.g. for local or EFS), the app uses **S3 when FLOW_STATE_S3_BUCKET is set** and ignores the file path for that Lambda.
+
+---
+
+## Resetting flow state (fixing stuck or bad state)
+
+If the Lambda state is stuck or corrupted, delete the S3 object so the next run starts with no saved state:
+
+1. In **AWS Console** go to **S3** → open your flow-state bucket (the one in `FLOW_STATE_S3_BUCKET`).
+2. Open the **flow-state** folder (or prefix).
+3. Delete the object **feature-request.json**.
+
+**CLI (AWS CLI):**
+```bash
+aws s3 rm s3://YOUR-BUCKET-NAME/flow-state/feature-request.json
+```
+Replace `YOUR-BUCKET-NAME` with your bucket name (e.g. `Demi-bot-flow-state`). Use the same region as your Lambda if the bucket is regional.
+
+After deletion, the app treats “object not found” as no state: the next Important Feature Request run will start fresh, and Jordan replies will no longer use the old state.

@@ -8,16 +8,8 @@
 #   More lines as needed…
 #
 # The next KEY: (or end of file) ends the current message. Blank lines are kept.
-# Lines starting with # are comments. Used by: Sales Room DM, Jordan flow, Important Feature Request flow.
-
-DM_MESSAGE:
-Hi James — I’m DEMI, your Deal Execution Manager for ACME.
-I’m here to help you handle the internal work behind this deal — chasing updates, routing questions to the right teams, and driving approvals — so you can stay focused on the customer and moving the deal forward.
-I’ve already mapped the current state and context based on Salesforce, relevant Slack threads, and meeting transcripts and created a tailored execution plan.
-Please review the plan and adjust as needed. Once you approve, I’ll start running it and ping you when I need a decision or sign-off.
-
-SALES_ROOM_DM_FALLBACK:
-Demi has prepared an execution plan. Review & approve in the Sales Room.
+# Lines starting with # are comments. Used by: Jordan flow, Important Feature Request flow.
+# Welcome DM to James is in config/slackMessages.js (buildWelcomeDmBlocks, WELCOME_DM_FALLBACK).
 
 JORDAN_FIRST_QUESTION:
 Customer: ACME

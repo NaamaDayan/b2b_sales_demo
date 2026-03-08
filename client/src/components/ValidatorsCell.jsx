@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 
 /** Format @firstname_lastname to "Firstname Lastname" for display; otherwise return as-is. */
 function formatValidatorDisplay(handle) {
@@ -34,7 +34,19 @@ export default function ValidatorsCell({ taskId, validators, editable, onUpdate 
     return (
       <div className="validators-cell read-only">
         {(validators && validators.length)
-          ? validators.map(formatValidatorDisplay).join(', ')
+          ? validators.map((v, i) => (
+              <Fragment key={v}>
+                {i > 0 && ', '}
+                <a
+                  href="#"
+                  className="validator-user-link"
+                  onClick={(e) => e.preventDefault()}
+                  title={v}
+                >
+                  @{formatValidatorDisplay(v)}
+                </a>
+              </Fragment>
+            ))
           : '—'}
       </div>
     );
@@ -44,7 +56,13 @@ export default function ValidatorsCell({ taskId, validators, editable, onUpdate 
     <div className="validators-cell" data-id={taskId}>
       {(validators || []).map((v) => (
         <span key={v} className="validator-pill" title={v}>
-          {formatValidatorDisplay(v)}{' '}
+          <a
+            href="#"
+            className="validator-user-link"
+            onClick={(e) => e.preventDefault()}
+          >
+            @{formatValidatorDisplay(v)}
+          </a>{' '}
           <button type="button" className="remove" onClick={() => handleRemove(v)} aria-label="Remove">
             ×
           </button>

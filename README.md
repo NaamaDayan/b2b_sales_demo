@@ -40,9 +40,9 @@ An **instance** is one running copy of your server. **Locally:** one `npm run de
 
 ## 3. Customize the DM and flow messages
 
-The message the AE receives is from **`feature-request-messages.txt`** (DM_MESSAGE). Flow messages (Jordan/James) are in **`config/slackMessages.js`**. See [docs/IMPORTANT_FEATURE_REQUEST_FLOW.md](docs/IMPORTANT_FEATURE_REQUEST_FLOW.md).
+The welcome DM to the AE is built from **`config/slackMessages.js`** (`buildWelcomeDmBlocks`, `WELCOME_DM_FALLBACK`). Flow messages (Jordan/James) are also in **`config/slackMessages.js`**. See [docs/IMPORTANT_FEATURE_REQUEST_FLOW.md](docs/IMPORTANT_FEATURE_REQUEST_FLOW.md).
 
-1. Edit `feature-request-messages.txt` for the welcome DM; edit `config/slackMessages.js` for Slack flow messages.
+1. Edit `config/slackMessages.js` for the welcome DM and Slack flow messages.
 2. Restart the server (or call `GET /send-welcome`) to resend the DM.
 
 The DM is sent with **Slack Block Kit**: a section block for the main text and a **“Review & Approve Plan”** button that links to the Sales Room (`BASE_URL/sales-room?customer=ACME`).
@@ -63,10 +63,12 @@ npm run dev
 
 The server listens on `http://localhost:3000`. On startup it:
 
-1. Reads the message from `feature-request-messages.txt` (DM_MESSAGE)
+1. Builds the welcome DM from `config/slackMessages.js` (buildWelcomeDmBlocks)
 2. Sends a DM to the user(s) in `JAMES_USER_ID` (and `JAMES_2_USER_ID` if set) with Block Kit formatting (section + button linking to the Sales Room).
 
-**Sales Room:** Open [http://localhost:3000/sales-room?customer=ACME](http://localhost:3000/sales-room?customer=ACME) to see the customer panel and Demi’s suggested tasks table to start the real Slack flow.
+**Sales Room (AE):** Open [http://localhost:3000/sales-room?customer=ACME](http://localhost:3000/sales-room?customer=ACME) to see the customer panel and Demi’s suggested tasks table to start the real Slack flow.
+
+**Pipeline (VP Sales):** Open [http://localhost:3000/sales-room/vp-sales](http://localhost:3000/sales-room/vp-sales) to see the static pipeline table with expandable rows; each row shows the same four tracks (decision process, solution validation, commercials, closing ops) when expanded. No backend or room state required.
 
 ---
 
@@ -100,7 +102,8 @@ Slack needs a public URL to send events. Use ngrok to expose your local server:
    - **message.im** – direct messages to the bot.
    - **message.groups** – messages in private channels (if needed).
 5. **Save Changes**. Reinstall the app to the workspace if Slack prompts you.
-6. Invite the bot to a channel (e.g. `/invite @Demi`) or DM it. Messages you send will be echoed back (existing echo behavior is unchanged).
+6. For the welcome DM **Approve** button: go to **Interactivity & Shortcuts** and set **Request URL** to `https://<your-host>/slack/interactions`. This lets James approve from Slack and triggers the message to Jordan plus Demi’s follow-up.
+7. Invite the bot to a channel (e.g. `/invite @Demi`) or DM it. Messages you send will be echoed back (existing echo behavior is unchanged).
 
 ---
 
@@ -118,13 +121,16 @@ Include everything the app needs at runtime:
 - `feature-request-messages.txt`
 - `public/sales-room.html`, `public/scripted-events-config.js` (optional; scripted-events is legacy)
 - `package.json`
+- **For Sales Room + VP Sales UI:** run `npm run build:client` and include **`client/dist/`** (the built React app). The server serves it at `/sales-room` and `/sales-room/vp-sales`.
 
 Example (PowerShell, from project root):
 
 ```powershell
 # From project root
 npm install
-Compress-Archive -Path node_modules, server.js, slack.js, salesRoomDm.js, featureRequestFlow.js, flowStateStore.js, env.js, botMessages.js, config, feature-request-messages.txt, public, package.json -DestinationPath lambda-deploy.zip
+# If using the React Sales Room + VP view: run first: npm run build:client
+# Then add client/dist to the path list below.
+Compress-Archive -Path node_modules, server.js, slack.js, salesRoomDm.js, featureRequestFlow.js, flowStateStore.js, roomStateStore.js, env.js, botMessages.js, config, feature-request-messages.txt, public, package.json -DestinationPath lambda-deploy.zip
 ```
 
 Then upload `lambda-deploy.zip` to your Lambda function (Lambda console → Code → Upload from → .zip file).
@@ -162,9 +168,12 @@ Create a REST API and a **Lambda proxy** resource:
 - Method: `ANY` (or add `GET` and `POST` and wire them to the same Lambda).
 - Integration: Lambda Proxy.
 
-So in both cases the **Sales Room is deployed** with the same Lambda: users open  
-`https://<your-api-id>.execute-api.<region>.amazonaws.com/sales-room?customer=ACME`  
-(and you set that base in `BASE_URL` as above).
+So in both cases the **Sales Room and VP Sales view are deployed** with the same Lambda:
+
+- **AE Deal Space:** `https://<your-api-id>.execute-api.<region>.amazonaws.com/<stage>/sales-room?customer=ACME` (or with `?room=...` for a persisted demo room).
+- **VP Sales (pipeline table):** `https://<your-api-id>.execute-api.<region>.amazonaws.com/<stage>/sales-room/vp-sales`
+
+No separate deployment or config is needed for the VP view; it uses the same build and routes. Ensure the client is built before packaging: run `npm run build:client` and include the `client/dist/` folder in your Lambda zip (see 7.1). If you already deploy the Sales Room, the VP view is included. Set `BASE_URL` to your API Gateway base (e.g. `https://<your-api-id>.execute-api.<region>.amazonaws.com`) for Slack links.
 
 ### 7.4 Slack Event Subscriptions (for Lambda)
 
@@ -208,13 +217,13 @@ So in both cases the **Sales Room is deployed** with the same Lambda: users open
 /project-root
   server.js           # Express app, /slack/events, /sales-room, /api/tasks/important-feature-request/*, startup Sales Room DM
   slack.js            # Slack API (postMessage, sendDM, sendDMWithBlocks, openDMChannel, uploadFileToChannel)
-  salesRoomDm.js      # Reads feature-request-messages.txt (DM_MESSAGE) and builds Block Kit blocks for the DM
+  salesRoomDm.js      # (Legacy) Welcome DM is now built in config/slackMessages.js (buildWelcomeDmBlocks)
   featureRequestFlow.js  # Important Feature Request flow (Demi ↔ Jordan ↔ James); see docs/IMPORTANT_FEATURE_REQUEST_FLOW.md
   flowStateStore.js   # Shared flow state (memory / file / S3) for multi-instance Lambda
   config/
     slackMessages.js       # Slack message config for Jordan/James (JORDAN_FIRST_QUESTION, MESSAGE_TO_JAMES, etc.)
     featureRequestTraceSteps.js  # Trace step strings for the reasoning trail
-  feature-request-messages.txt   # DM_MESSAGE, SALES_ROOM_DM_FALLBACK; task-return copy in config/slackMessages.js
+  feature-request-messages.txt   # Jordan/James flow text; welcome DM in config/slackMessages.js
   public/
     sales-room.html           # Fallback Sales Room HTML (React app in client/ is built to client/dist)
     scripted-events-config.js # Legacy pre-scripted demo; flow is now task-triggered

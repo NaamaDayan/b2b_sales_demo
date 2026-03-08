@@ -124,6 +124,7 @@ export async function getByChannel(channelId, userId) {
 export async function save(state, channelUserKeys = null) {
   const keys = channelUserKeys || (state.jordans || []).map((j) => `${j.channelId}:${j.userId}`);
   const serializable = {
+    roomId: state.roomId,
     phase: state.phase,
     jordans: state.jordans || [],
     jamesUserIds: state.jamesUserIds || [],

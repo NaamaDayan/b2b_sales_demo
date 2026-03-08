@@ -39,7 +39,7 @@ function DemiJordanConversation() {
 }
 
 export default function ChatModal({ task, onClose }) {
-  const isImportantFeatureRequest = task?.workflowId === 'important-feature-request' || task?.title === 'Important Feature Request';
+  const isImportantFeatureRequest = task?.workflowId === 'important-feature-request' || task?.title === 'Customer request: SCIM provisioning support';
 
   return (
     <div className="chat-modal-overlay visible" aria-hidden="false" onClick={onClose}>

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   REQUIRES_ATTENTION_INITIAL,
   UNDER_CONTROL_INITIAL,
@@ -10,9 +10,19 @@ import TabBar from './components/TabBar';
 import TaskTable from './components/TaskTable';
 import AgentTracePanel from './components/AgentTracePanel';
 import ChatModal from './components/ChatModal';
+import ReadinessMilestones from './components/ReadinessMilestones';
 import './App.css';
 
+function getRoomId() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('room') || null;
+}
+
+const SAVE_DEBOUNCE_MS = 800;
+
 export default function App() {
+  const roomId = useRef(getRoomId());
+  const [loading, setLoading] = useState(!!roomId.current);
   const [requiresAttention, setRequiresAttention] = useState(REQUIRES_ATTENTION_INITIAL);
   const [underControl, setUnderControl] = useState(UNDER_CONTROL_INITIAL);
   const [done, setDone] = useState(DONE_INITIAL);
@@ -20,6 +30,72 @@ export default function App() {
   const [executingTaskIds, setExecutingTaskIds] = useState(new Set());
   const [activeTab, setActiveTab] = useState('attention');
   const [chatModalTask, setChatModalTask] = useState(null);
+
+  const saveTimer = useRef(null);
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
+
+  // ── Hydrate from server on mount ────────────────────────────────────────
+  useEffect(() => {
+    if (!roomId.current) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/room/${roomId.current}/state`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled || !data) return;
+        if (data.requiresAttention) setRequiresAttention(data.requiresAttention);
+        if (data.underControl) setUnderControl(data.underControl);
+        if (data.done) setDone(data.done);
+        if (data.trace) setTrace(data.trace);
+        if (data.executingTaskIds) setExecutingTaskIds(new Set(data.executingTaskIds));
+        if (data.activeTab) setActiveTab(data.activeTab);
+      } catch (err) {
+        console.warn('[App] Failed to load room state:', err.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── Persist to server (debounced) ───────────────────────────────────────
+  const persistState = useCallback((overrides = {}) => {
+    if (!roomId.current) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      const body = {
+        requiresAttention,
+        underControl,
+        done,
+        trace,
+        executingTaskIds: [...executingTaskIds],
+        activeTab,
+        ...overrides,
+      };
+      fetch(`/api/room/${roomId.current}/state`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).catch((err) => console.warn('[App] room state save failed:', err.message));
+    }, SAVE_DEBOUNCE_MS);
+  }, [requiresAttention, underControl, done, trace, executingTaskIds, activeTab]);
+
+  // Save whenever state changes (after initial load)
+  const hasHydrated = useRef(false);
+  useEffect(() => {
+    if (loading) return;
+    if (!hasHydrated.current) {
+      hasHydrated.current = true;
+      return;
+    }
+    persistState();
+  }, [requiresAttention, underControl, done, trace, executingTaskIds, activeTab, loading, persistState]);
 
   const onTraceEntry = useCallback((entry) => {
     setTrace((prev) => [...prev, entry]);
@@ -46,7 +122,14 @@ export default function App() {
           setUnderControl((prev) => {
             const taskToMove = prev.find((t) => t.id === tid);
             if (!taskToMove) return prev;
-            const taskToAdd = taskUpdate ? { ...taskToMove, ...taskUpdate } : taskToMove;
+            let taskToAdd = taskUpdate ? { ...taskToMove, ...taskUpdate } : taskToMove;
+            if (taskUpdate?.agentLogAppend) {
+              taskToAdd = {
+                ...taskToAdd,
+                agentLog: [...(taskToMove.agentLog || []), ...taskUpdate.agentLogAppend],
+              };
+              delete taskToAdd.agentLogAppend;
+            }
             if (moveTo === 'done') setDone((d) => [...d, taskToAdd]);
             if (moveTo === 'requiresAttention') setRequiresAttention((r) => [...r, taskToAdd]);
             return prev.filter((t) => t.id !== tid);
@@ -54,7 +137,7 @@ export default function App() {
         },
       };
 
-      runTaskExecution(taskInControl, callbacks).then(() => {
+      runTaskExecution(taskInControl, callbacks, roomId.current).then(() => {
         setExecutingTaskIds((prev) => {
           const next = new Set(prev);
           next.delete(task.id);
@@ -74,6 +157,14 @@ export default function App() {
     }
   }, []);
 
+  if (loading) {
+    return (
+      <div className="app-root" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <p style={{ color: 'var(--text-secondary, #888)', fontSize: '1.1rem' }}>Loading deal space...</p>
+      </div>
+    );
+  }
+
   const tasksByTab = {
     attention: requiresAttention,
     control: underControl,
@@ -83,8 +174,12 @@ export default function App() {
   return (
     <div className="app-root">
       <main className="main-content">
-        <h1 className="portal-title">Deal Execution Space — ACME</h1>
+        <div className="portal-header-row">
+          <h1 className="portal-title">Deal Execution Space — ACME</h1>
+          <a href="vp-sales" className="vp-nav-link">Pipeline (VP)</a>
+        </div>
         <DealDetails />
+        <ReadinessMilestones requiresAttention={requiresAttention} underControl={underControl} />
         <TabBar
           activeTab={activeTab}
           onTabChange={setActiveTab}
