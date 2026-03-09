@@ -59,10 +59,10 @@ Do you approve?`;
 
 /**
  * Demi's follow-up to James after he clicks Approve.
- * @param {string} jordanUserId - Slack user ID for <@mention>
+ * @param {string} jordanUserId2 - Slack user ID for Jordan 2 (JORDAN_2_USER_ID) for <@mention>
  */
-export function getJamesAfterApproveMessage(jordanUserId) {
-  const mention = jordanUserId ? `<@${jordanUserId}>` : 'Jordan Lee';
+export function getJamesAfterApproveMessage(jordanUserId2) {
+  const mention = jordanUserId2 ? `<@${jordanUserId2}>` : 'Jordan 2';
   return `Perfect, I've routed it to ${mention} and will let you know once I have an answer.`;
 }
 

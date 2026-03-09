@@ -176,7 +176,6 @@ export default function App() {
       <main className="main-content">
         <div className="portal-header-row">
           <h1 className="portal-title">Deal Execution Space — ACME</h1>
-          <a href="vp-sales" className="vp-nav-link">Pipeline (VP)</a>
         </div>
         <DealDetails />
         <ReadinessMilestones requiresAttention={requiresAttention} underControl={underControl} />

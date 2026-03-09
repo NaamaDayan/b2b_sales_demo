@@ -184,7 +184,7 @@ app.post(
         const userId = payload.user?.id;
         if (userId && SLACK_BOT_TOKEN) {
           try {
-            const followUpText = getJamesAfterApproveMessage(JORDAN_USER_ID || JORDAN_2_USER_ID);
+            const followUpText = getJamesAfterApproveMessage(JORDAN_2_USER_ID);
             await sendDM(SLACK_BOT_TOKEN, userId, followUpText);
             console.log('[server] James approved via Slack; ack DM sent to', userId);
           } catch (err) {

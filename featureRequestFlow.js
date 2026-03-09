@@ -223,22 +223,22 @@ export async function handleMessage(token, channelId, userId, text) {
   }
 
   if (s.phase === PHASE.WAITING_JORDAN_FIRST_REPLY) {
-    await sendToAllJordans(token, s, 'JORDAN_SECOND_QUESTION');
     s.phase = PHASE.WAITING_JORDAN_SECOND_REPLY;
     await persistState(s);
+    await sendToAllJordans(token, s, 'JORDAN_SECOND_QUESTION');
     return true;
   }
 
   if (s.phase === PHASE.WAITING_JORDAN_SECOND_REPLY) {
-    await sendToAllJordans(token, s, 'JORDAN_ACK_FINAL');
-    s.phase = PHASE.ACK_SENT_WAITING_DAN;
     addEvent(s, TRACE_STEPS.RECEIVED_JORDAN_APPROVAL, 'completed', {
       traceSource: 'Slack',
       quote: trimmed,
       detail: "Jordan approved the proposed response and provided the exact wording above. Next step is to get Dan's sign-off for Security before sending the final email to the customer.",
     });
     addEvent(s, TRACE_STEPS.WAITING_DAN, 'waiting');
+    s.phase = PHASE.ACK_SENT_WAITING_DAN;
     await persistState(s);
+    await sendToAllJordans(token, s, 'JORDAN_ACK_FINAL');
     await scheduleDanSimulationAndFinish(s, token);
     return true;
   }
